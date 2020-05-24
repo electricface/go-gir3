@@ -45,6 +45,15 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 	defer bi.Unref()
 
 	switch bi.Type() {
+	case INFO_TYPE_FUNCTION:
+		funcInfo := ToFunctionInfo(bi)
+		invoker, err := funcInfo.PrepInvoker()
+		if err != nil {
+			return Invoker{}, err
+		}
+		ic.put(id, invoker)
+		return invoker, nil
+
 	case INFO_TYPE_INTERFACE:
 		ifcInfo := ToInterfaceInfo(bi)
 		methodInfo := ifcInfo.FindMethod(fnName)

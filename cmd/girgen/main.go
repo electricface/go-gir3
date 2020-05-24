@@ -38,8 +38,8 @@ func main() {
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
 			log.Println(name, "FUNCTION")
-			//fi := gi.ToFunctionInfo(bi)
-			//pFunction(fi)
+			fi := gi.ToFunctionInfo(bi)
+			pFunction(sourceFile, fi)
 
 		case gi.INFO_TYPE_CALLBACK:
 		case gi.INFO_TYPE_STRUCT:

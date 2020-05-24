@@ -1088,6 +1088,10 @@ func (arg Argument) String() strPtr {
 	return strPtr{*(*unsafe.Pointer)(unsafe.Pointer(&arg))}
 }
 
+func (arg Argument) Int() int {
+	return int(*(*C.gint)(unsafe.Pointer(&arg)))
+}
+
 type strPtr struct {
 	P unsafe.Pointer
 }
