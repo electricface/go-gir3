@@ -7,7 +7,9 @@ import (
 )
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
-	s.GoBody.Pn("// + %s", fi.Symbol())
+	symbol := fi.Symbol()
+	s.GoBody.Pn("// %s", symbol)
+	symbols = append(symbols, symbol)
 
 	fnName := fi.Name()
 
@@ -85,7 +87,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 	s.GoBody.Pn("func %s(%s) %s {", fnName, argsJoined, retTypesJoined)
 
-	s.GoBody.Pn("invoker, err := invokerCache.Get(F_%s, %q, \"\")", fnName, fnName)
+	s.GoBody.Pn("invoker, err := invokerCache.Get(%s, %q, \"\")", symbol, fnName)
 	s.GoBody.Pn("if err != nil {")
 
 	// TODO
@@ -292,6 +294,11 @@ func parseArgType(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeR
 		case gi.TYPE_TAG_DOUBLE:
 			type0 = "float64"
 		}
+
+	default:
+		// 未知类型
+		type0 = "TODO_TYPE"
+		newArg = fmt.Sprintf("gi.NewTODOArgument(%s)", varArg)
 	}
 
 	return &parseArgTypeResult{

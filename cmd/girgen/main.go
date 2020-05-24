@@ -19,6 +19,8 @@ func init() {
 	flag.StringVar(&optDir, "d", "", "output directory")
 }
 
+var symbols []string
+
 func main() {
 	flag.Parse()
 
@@ -29,7 +31,18 @@ func main() {
 	}
 
 	pkg := optPkg
-	sourceFile := getSourceFile(pkg)
+	sourceFile := NewSourceFile(pkg)
+
+	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
+	sourceFile.GoBody.Pn("var invokerCache = gi.NewInvokerCache(%q)", optNamespace)
+	sourceFile.GoBody.Pn("func init() {")
+	sourceFile.GoBody.Pn("_, err := repo.Require(%q, %q, gi.REPOSITORY_LOAD_FLAG_LAZY)",
+		optNamespace, optVersion)
+	sourceFile.GoBody.Pn("if err != nil {")
+	sourceFile.GoBody.Pn("    panic(err)")
+	sourceFile.GoBody.Pn("}")  // end if
+
+	sourceFile.GoBody.Pn("}")  // end func
 
 	num := repo.NumInfo(optNamespace)
 	for i := 0; i < num; i++ {
@@ -93,6 +106,14 @@ func main() {
 		bi.Unref()
 	}
 
+	if len(symbols) > 0 {
+		sourceFile.GoBody.Pn("const (")
+		for i, symbol := range symbols {
+			sourceFile.GoBody.Pn("%s = %v", symbol, i)
+		}
+		sourceFile.GoBody.Pn(")")  // end const
+	}
+
 	outFile := filepath.Join(optDir, optPkg+"_auto.go")
 	sourceFile.Save(outFile)
 }
@@ -116,7 +137,3 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo) {
 	s.GoBody.Pn(")") // end const
 }
 
-func getSourceFile(pkg string) *SourceFile {
-	sourceFile := NewSourceFile(pkg)
-	return sourceFile
-}
