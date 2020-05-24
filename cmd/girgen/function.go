@@ -34,7 +34,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		argTypeInfo := fiArg.Type()
 		dir := fiArg.Direction()
 
-		varArg := varReg.allocVar(fiArg.Name())
+		varArg := varReg.alloc(fiArg.Name())
 		if dir == gi.DIRECTION_IN || dir == gi.DIRECTION_INOUT {
 			// 作为 go 函数的输入参数之一
 
@@ -45,7 +45,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 				type0 = parseResult.type0
 				beforeArgLines = append(beforeArgLines, parseResult.beforeArgLines...)
 
-				varArg := varReg.allocVar("arg_"+ varArg)
+				varArg := varReg.alloc("arg_"+ varArg)
 				argNames = append(argNames, varArg)
 				newArgLines = append(newArgLines, fmt.Sprintf("%s := %s", varArg, parseResult.newArg))
 
@@ -104,7 +104,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	callArgArgs := "nil"
 	if len(argNames) > 0 {
 		// 比如输出 args := []gi.Argument{arg0,arg1}
-		varArgs := varReg.allocVar("args")
+		varArgs := varReg.alloc("args")
 		s.GoBody.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(argNames, ", "))
 		callArgArgs = varArgs
 	}
@@ -113,7 +113,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	callArgRet := "nil"
 	if !isRetVoid {
 		// 有返回值
-		varRet = varReg.allocVar("ret")
+		varRet = varReg.alloc("ret")
 		callArgRet = "&" + varRet
 		s.GoBody.Pn("var %s gi.Argument", varRet)
 	}
@@ -157,10 +157,7 @@ type varNameIdx struct {
 	idx int
 }
 
-func (vr *VarReg) allocVar(prefix string) string {
-	//for _, part := range vr.vars {
-	//	if part.name == prefix
-	//}
+func (vr *VarReg) alloc(prefix string) string {
 	var found bool
 	newVarIdx  := 0
 	if len(vr.vars) > 0 {
@@ -170,6 +167,7 @@ func (vr *VarReg) allocVar(prefix string) string {
 			if prefix == nameIdx.name {
 				found = true
 				newVarIdx = nameIdx.idx + 1
+				break
 			}
 		}
 	}
@@ -219,7 +217,7 @@ func parseArgType(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeR
 		// arg = gi.NewStringArgument(pArg)
 		// after call:
 		// gi.Free(pArg)
-		varPArg := varReg.allocVar("p_" + varArg)
+		varPArg := varReg.alloc("p_" + varArg)
 		beforeArgLines = append(beforeArgLines,
 			fmt.Sprintf("%s := gi.CString(%s)", varPArg, varArg))
 		newArg = fmt.Sprintf("gi.NewStringArgument(%s)", varPArg)
