@@ -1094,48 +1094,51 @@ func (fi *FunctionInfo) prepInvoker() (cInvoker C.GIFunctionInvoker, goErr error
 }
 
 type Invoker struct {
-	p *C.GIFunctionInvoker
+	c *C.GIFunctionInvoker
 }
 
 func (fi *FunctionInfo) PrepInvoker() (Invoker, error) {
-	cI, err := fi.prepInvoker()
-	if err != nil {
-		return Invoker{}, err
+	var err *C.GError
+	var cInvoker C.GIFunctionInvoker
+	ret := C.g_function_info_prep_invoker(fi.c, &cInvoker,  &err)
+	if ret == 0 {
+		goErr := _GErrorToOSError(err)
+		return Invoker{}, goErr
 	}
-	return Invoker{&cI}, nil
+	return Invoker{&cInvoker}, nil
 }
 
-func (fi *FunctionInfo) Invoke(args []*Argument, retVal *Argument) error {
-	invoker, err := fi.prepInvoker()
-	if err != nil {
-		return err
-	}
+//func (fi *FunctionInfo) Invoke(args []*Argument, retVal *Argument) error {
+//	invoker, err := fi.prepInvoker()
+//	if err != nil {
+//		return err
+//	}
+//
+//	var cArgs *unsafe.Pointer
+//	if len(args) > 0 {
+//		cArgsSlice := make([]uintptr, len(args))
+//		for i, arg := range args {
+//			cArgsSlice[i] = uintptr(unsafe.Pointer(arg))
+//		}
+//		cArgs = (*unsafe.Pointer)(unsafe.Pointer(&cArgsSlice[0]))
+//	}
+//	cOut := unsafe.Pointer(retVal)
+//	C.ffi_call(&invoker.cif, (*[0]byte)(unsafe.Pointer(invoker.native_address)), cOut, cArgs)
+//	return nil
+//}
 
+
+func (invoker Invoker) Call (args []Argument, retVal *Argument) error {
 	var cArgs *unsafe.Pointer
 	if len(args) > 0 {
-		cArgsSlice := make([]uintptr, len(args))
-		for i, arg := range args {
-			cArgsSlice[i] = uintptr(unsafe.Pointer(arg))
+		cArgsSlice := make([]unsafe.Pointer, len(args))
+		for i := range args {
+			cArgsSlice[i] = unsafe.Pointer(&args[i])
 		}
 		cArgs = (*unsafe.Pointer)(unsafe.Pointer(&cArgsSlice[0]))
 	}
 	cOut := unsafe.Pointer(retVal)
-	C.ffi_call(&invoker.cif, (*[0]byte)(unsafe.Pointer(invoker.native_address)), cOut, cArgs)
-	return nil
-}
-
-
-func (invoker Invoker) Call (args []*Argument, retVal *Argument) error {
-	var cArgs *unsafe.Pointer
-	if len(args) > 0 {
-		cArgsSlice := make([]uintptr, len(args))
-		for i, arg := range args {
-			cArgsSlice[i] = uintptr(unsafe.Pointer(arg))
-		}
-		cArgs = (*unsafe.Pointer)(unsafe.Pointer(&cArgsSlice[0]))
-	}
-	cOut := unsafe.Pointer(retVal)
-	C.ffi_call(&invoker.p.cif, (*[0]byte)(unsafe.Pointer(invoker.p.native_address)), cOut, cArgs)
+	C.ffi_call(&invoker.c.cif, (*[0]byte)(unsafe.Pointer(invoker.c.native_address)), cOut, cArgs)
 	return nil
 }
 
