@@ -18,6 +18,21 @@ static inline void free_string(char *p) { free(p); }
 static inline void free_gstring(gchar *p) { if (p) g_free(p); }
 static inline char *gpointer_to_charp(gpointer p) { return p; }
 static inline gchar **next_gcharptr(gchar **s) { return s+1; }
+
+static void wrap_ffi_call(ffi_cif *cif, void (*fn)(void), void *rvalue,
+	GIArgument *args, int n_args) {
+
+	void **avalue = NULL;
+	if (n_args > 0) {
+		avalue = (void**)alloca(sizeof(gpointer) * n_args);
+		int i;
+		for (i = 0; i < n_args; i++) {
+			avalue[i] = &args[i];
+		}
+	}
+	ffi_call(cif, fn, rvalue, avalue);
+}
+
 #cgo pkg-config: gobject-introspection-1.0 gobject-introspection-no-export-1.0 libffi
 */
 import "C"
@@ -264,7 +279,7 @@ const (
 )
 
 // g_irepository_get_default
-func DefaultRepository() *Repository {
+func getDefaultRepository() *Repository {
 	ret := C.g_irepository_get_default()
 	if ret == nil {
 		return nil
@@ -952,7 +967,8 @@ func (fi *FunctionInfo) VFunc() *VFuncInfo {
 //	return nil
 //}
 
-type Argument C.GIArgument
+// C.GIArgument is [8]byte
+type Argument [8]byte
 
 func NewUint8Argument(v uint8) (arg Argument) {
 	*(*uint8)(unsafe.Pointer(&arg)) = v
@@ -1083,16 +1099,6 @@ func(v strPtr) Take() string {
 }
 
 
-// g_function_info_prep_invoker
-func (fi *FunctionInfo) prepInvoker() (cInvoker C.GIFunctionInvoker, goErr error) {
-	var err *C.GError
-	ret := C.g_function_info_prep_invoker(fi.c, &cInvoker,  &err)
-	if ret == 0 {
-		goErr = _GErrorToOSError(err)
-	}
-	return
-}
-
 type Invoker struct {
 	c *C.GIFunctionInvoker
 }
@@ -1108,38 +1114,14 @@ func (fi *FunctionInfo) PrepInvoker() (Invoker, error) {
 	return Invoker{&cInvoker}, nil
 }
 
-//func (fi *FunctionInfo) Invoke(args []*Argument, retVal *Argument) error {
-//	invoker, err := fi.prepInvoker()
-//	if err != nil {
-//		return err
-//	}
-//
-//	var cArgs *unsafe.Pointer
-//	if len(args) > 0 {
-//		cArgsSlice := make([]uintptr, len(args))
-//		for i, arg := range args {
-//			cArgsSlice[i] = uintptr(unsafe.Pointer(arg))
-//		}
-//		cArgs = (*unsafe.Pointer)(unsafe.Pointer(&cArgsSlice[0]))
-//	}
-//	cOut := unsafe.Pointer(retVal)
-//	C.ffi_call(&invoker.cif, (*[0]byte)(unsafe.Pointer(invoker.native_address)), cOut, cArgs)
-//	return nil
-//}
-
-
-func (invoker Invoker) Call (args []Argument, retVal *Argument) error {
-	var cArgs *unsafe.Pointer
+func (invoker Invoker) Call (args []Argument, retVal *Argument) {
+	var cArgs *C.GIArgument
 	if len(args) > 0 {
-		cArgsSlice := make([]unsafe.Pointer, len(args))
-		for i := range args {
-			cArgsSlice[i] = unsafe.Pointer(&args[i])
-		}
-		cArgs = (*unsafe.Pointer)(unsafe.Pointer(&cArgsSlice[0]))
+		cArgs = (*C.GIArgument)(unsafe.Pointer(&args[0]))
 	}
-	cOut := unsafe.Pointer(retVal)
-	C.ffi_call(&invoker.c.cif, (*[0]byte)(unsafe.Pointer(invoker.c.native_address)), cOut, cArgs)
-	return nil
+	cRetVal := unsafe.Pointer(retVal)
+	C.wrap_ffi_call(&invoker.c.cif, (*[0]byte)(unsafe.Pointer(invoker.c.native_address)),
+		cRetVal, cArgs, C.int(len(args)))
 }
 
 
