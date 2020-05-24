@@ -52,6 +52,7 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 		if methodInfo.IsNil() {
 			return Invoker{}, fmt.Errorf("not found %q in interface %v", fnName, name)
 		}
+		defer methodInfo.Unref()
 
 		invoker, err := methodInfo.PrepInvoker()
 		if err != nil {
@@ -67,6 +68,7 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 		if methodInfo.IsNil() {
 			return Invoker{}, fmt.Errorf("not found %q in interface %v", fnName, name)
 		}
+		defer methodInfo.Unref()
 
 		invoker, err := methodInfo.PrepInvoker()
 		if err != nil {
