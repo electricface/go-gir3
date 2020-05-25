@@ -1049,7 +1049,7 @@ func NewUintArgument(v uint) (arg Argument) {
 	return
 }
 
-func NewLongArgument(v uint64) (arg Argument) {
+func NewLongArgument(v int64) (arg Argument) {
 	*(*C.glong)(unsafe.Pointer(&arg)) = (C.glong)(v)
 	return
 }
@@ -1079,17 +1079,91 @@ func NewPointerArgument(v unsafe.Pointer) (arg Argument) {
 	return
 }
 
-func (arg Argument) Pointer() unsafe.Pointer {
-	//return *(*unsafe.Pointer)(unsafe.Pointer(arg))
-	return *(*unsafe.Pointer)(unsafe.Pointer(&arg))
+
+func (arg Argument) Bool() bool {
+	val := *(*C.gboolean)(unsafe.Pointer(&arg))
+	return val != 0
+}
+
+func (arg Argument) Int8() int8 {
+	return *(*int8)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Uint8() uint8 {
+	return *(*uint8)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Int16() int16 {
+	return *(*int16)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Uint16() uint16 {
+	return *(*uint16)(unsafe.Pointer(&arg))
+}
+
+
+func (arg Argument) Int32() int32 {
+	return *(*int32)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Uint32() uint32 {
+	return *(*uint32)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Int64() int64 {
+	return *(*int64)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Uint64() uint64 {
+	return *(*uint64)(unsafe.Pointer(&arg))
+}
+
+func (arg Argument) Float() float32 {
+	return float32(*(*C.gfloat)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Double() float64 {
+	return float64(*(*C.gdouble)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Short() int16 {
+	return int16(*(*C.gshort)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) UShort() uint16 {
+	return uint16(*(*C.gushort)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Int() int {
+	return int(*(*C.gint)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Uint() uint {
+	return uint(*(*C.guint)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Long() int64 {
+	return int64(*(*C.glong)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) ULong() uint64 {
+	return uint64(*(*C.gulong)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) SSize() int64 {
+	return int64(*(*C.gssize)(unsafe.Pointer(&arg)))
+}
+
+func (arg Argument) Size() uint64 {
+	return uint64(*(*C.gsize)(unsafe.Pointer(&arg)))
 }
 
 func (arg Argument) String() strPtr {
 	return strPtr{*(*unsafe.Pointer)(unsafe.Pointer(&arg))}
 }
 
-func (arg Argument) Int() int {
-	return int(*(*C.gint)(unsafe.Pointer(&arg)))
+func (arg Argument) Pointer() unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&arg))
 }
 
 type strPtr struct {
