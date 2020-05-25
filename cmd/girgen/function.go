@@ -6,10 +6,13 @@ import (
 	"strings"
 )
 
+var globalFuncNextIdx int
+
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
 	s.GoBody.Pn("// %s", symbol)
-	symbols = append(symbols, symbol)
+	funcIdx := globalFuncNextIdx
+	globalFuncNextIdx++
 
 	fnName := fi.Name()
 
@@ -87,7 +90,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 	s.GoBody.Pn("func %s(%s) %s {", fnName, argsJoined, retTypesJoined)
 
-	s.GoBody.Pn("invoker, err := invokerCache.Get(%s, %q, \"\")", symbol, fnName)
+	s.GoBody.Pn("invoker, err := invokerCache.Get(%d, %q, \"\")", funcIdx, fnName)
 	s.GoBody.Pn("if err != nil {")
 
 	// TODO

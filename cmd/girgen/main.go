@@ -19,8 +19,6 @@ func init() {
 	flag.StringVar(&optDir, "d", "", "output directory")
 }
 
-var symbols []string
-
 func main() {
 	flag.Parse()
 
@@ -104,14 +102,6 @@ func main() {
 		case gi.INFO_TYPE_TYPE:
 		}
 		bi.Unref()
-	}
-
-	if len(symbols) > 0 {
-		sourceFile.GoBody.Pn("const (")
-		for i, symbol := range symbols {
-			sourceFile.GoBody.Pn("%s = %v", symbol, i)
-		}
-		sourceFile.GoBody.Pn(")")  // end const
 	}
 
 	outFile := filepath.Join(optDir, optPkg+"_auto.go")
