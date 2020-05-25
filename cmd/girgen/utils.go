@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"unicode"
 )
@@ -51,3 +52,73 @@ func snake2Camel(name string) string {
 	}
 	return out.String()
 }
+
+var globalKeywords = []string{
+	// Go 语言关键字:
+	"break", "default", "func", "interface", "select",
+	"case", "defer", "go", "map", "struct",
+	"chan", "else", "goto", "package", "switch",
+	"const", "fallthrough", "if", "range", "type",
+	"continue", "for", "import", "return", "var",
+
+	// Go 语言内建函数:
+	"append", "cap", "close", "complex", "copy", "delete", "imag",
+	"len", "make", "new", "panic", "print", "println", "real", "recover",
+
+	// 全局变量
+	"_I",
+}
+
+var globalKeywordsMap map[string]struct{}
+
+func init() {
+	globalKeywordsMap = make(map[string]struct{})
+	for _, kw := range globalKeywords {
+		globalKeywordsMap[kw] = struct{}{}
+	}
+}
+
+type VarReg struct {
+	vars []varNameIdx
+}
+
+type varNameIdx struct {
+	name string
+	idx int
+}
+
+func (vr *VarReg) alloc(prefix string) string {
+	var found bool
+	newVarIdx  := 0
+	if len(vr.vars) > 0 {
+		for i := len(vr.vars) - 1; i >=0; i-- {
+			// 从尾部开始查找
+			nameIdx := vr.vars[i]
+			if prefix == nameIdx.name {
+				found = true
+				newVarIdx = nameIdx.idx + 1
+				break
+			}
+		}
+	}
+	if !found {
+		_, ok := globalKeywordsMap[prefix]
+		if ok {
+			// 和关键字重名了
+			newVarIdx = 1
+		}
+	}
+	nameIdx := varNameIdx{name: prefix, idx: newVarIdx}
+	vr.vars = append(vr.vars, nameIdx)
+	return nameIdx.String()
+}
+
+
+func (v varNameIdx) String() string {
+	if v.idx == 0 {
+		return v.name
+	}
+	// TODO 可能需要处理 v.name 以数字结尾的情况
+	return fmt.Sprintf("%s%d", v.name, v.idx)
+}
+

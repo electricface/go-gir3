@@ -7,14 +7,14 @@ import (
 
 type InvokerCache struct {
 	namespace string
-	mu sync.RWMutex
-	m map[uint]Invoker
+	mu        sync.RWMutex
+	m         map[uint]Invoker
 }
 
 func NewInvokerCache(ns string) *InvokerCache {
 	return &InvokerCache{
-		namespace:  ns,
-		m: make(map[uint]Invoker),
+		namespace: ns,
+		m:         make(map[uint]Invoker),
 	}
 }
 

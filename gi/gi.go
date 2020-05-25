@@ -123,7 +123,7 @@ func _ExpectBaseInfoType(bil BaseInfoLike, types ...InfoType) {
 
 // Finalizer for BaseInfo structure, does the unref
 //func _BaseInfoFinalizer(bi *BaseInfo) {
-	//bi.Unref()
+//bi.Unref()
 //}
 
 // Helper for initializing finalizer on BaseInfo
@@ -545,6 +545,18 @@ const (
 	DIRECTION_OUT   Direction = C.GI_DIRECTION_OUT
 	DIRECTION_INOUT Direction = C.GI_DIRECTION_INOUT
 )
+
+func (d Direction) String() (str string) {
+	switch d {
+	case DIRECTION_IN:
+		str = "in"
+	case DIRECTION_OUT:
+		str = "out"
+	case DIRECTION_INOUT:
+		str = "inout"
+	}
+	return
+}
 
 const (
 	SCOPE_TYPE_INVALID  ScopeType = C.GI_SCOPE_TYPE_INVALID
@@ -1079,7 +1091,6 @@ func NewPointerArgument(v unsafe.Pointer) (arg Argument) {
 	return
 }
 
-
 func (arg Argument) Bool() bool {
 	val := *(*C.gboolean)(unsafe.Pointer(&arg))
 	return val != 0
@@ -1100,7 +1111,6 @@ func (arg Argument) Int16() int16 {
 func (arg Argument) Uint16() uint16 {
 	return *(*uint16)(unsafe.Pointer(&arg))
 }
-
 
 func (arg Argument) Int32() int32 {
 	return *(*int32)(unsafe.Pointer(&arg))
@@ -1170,12 +1180,11 @@ type strPtr struct {
 	P unsafe.Pointer
 }
 
-func(v strPtr) Take() string {
+func (v strPtr) Take() string {
 	str := C.GoString((*C.char)(v.P))
 	C.free(v.P)
 	return str
 }
-
 
 type Invoker struct {
 	c *C.GIFunctionInvoker
@@ -1184,15 +1193,15 @@ type Invoker struct {
 func (fi *FunctionInfo) PrepInvoker() (Invoker, error) {
 	var err *C.GError
 	var cInvoker C.GIFunctionInvoker
-	ret := C.g_function_info_prep_invoker(fi.c, &cInvoker,  &err)
+	ret := C.g_function_info_prep_invoker(fi.c, &cInvoker, &err)
 	if ret == 0 {
 		goErr := _GErrorToOSError(err)
 		return Invoker{}, goErr
 	}
-	return Invoker{&cInvoker}, nil
+	return Invoker{c: &cInvoker}, nil
 }
 
-func (invoker Invoker) Call (args []Argument, retVal *Argument) {
+func (invoker Invoker) Call(args []Argument, retVal *Argument) {
 	var cArgs *C.GIArgument
 	if len(args) > 0 {
 		cArgs = (*C.GIArgument)(unsafe.Pointer(&args[0]))
@@ -1202,6 +1211,26 @@ func (invoker Invoker) Call (args []Argument, retVal *Argument) {
 		cRetVal, cArgs, C.int(len(args)))
 }
 
+// 为 direction 为 inout 或 out 的参数分配的 C 语言内存，
+// 之后会把这些内存的指针转化为 PointerArgument，然后传给 Invoker.Call 方法。
+func AllocArgs(num int) CMemArgs {
+	ptr := (unsafe.Pointer)(C.malloc(C.size_t(uintptr(num) * unsafe.Sizeof(uintptr(0)))))
+	return CMemArgs{P: ptr}
+}
+
+type CMemArgs struct {
+	P unsafe.Pointer
+}
+
+func (a CMemArgs) Free() {
+	Free(a.P)
+}
+
+func (a CMemArgs) Pointer(idx int) unsafe.Pointer {
+	return unsafe.Pointer(
+		uintptr(a.P) + uintptr(idx)*unsafe.Sizeof(uintptr(0)),
+	)
+}
 
 //------------------------------------------------------------------------------
 // SignalInfo
@@ -1794,3 +1823,7 @@ func CString(str string) unsafe.Pointer {
 	return unsafe.Pointer(C.CString(str))
 }
 
+func GoString(p unsafe.Pointer) string {
+	str := C.GoString((*C.char)(p))
+	return str
+}
