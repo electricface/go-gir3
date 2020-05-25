@@ -45,7 +45,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 			type0 := "TODO_TYPE"
 			if dir == gi.DIRECTION_IN {
-				parseResult := parseArgType(varArg, argTypeInfo, &varReg)
+				parseResult := parseArgTypeDirIn(varArg, argTypeInfo, &varReg)
 
 				type0 = parseResult.type0
 				beforeArgLines = append(beforeArgLines, parseResult.beforeArgLines...)
@@ -90,7 +90,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 	s.GoBody.Pn("func %s(%s) %s {", fnName, argsJoined, retTypesJoined)
 
-	s.GoBody.Pn("invoker, err := invokerCache.Get(%d, %q, \"\")", funcIdx, fnName)
+	varInvoker := varReg.alloc("iv")
+	s.GoBody.Pn("%s, err := _I.Get(%d, %q, \"\")", varInvoker, funcIdx, fnName)
 	s.GoBody.Pn("if err != nil {")
 
 	// TODO
@@ -122,7 +123,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		callArgRet = "&" + varRet
 		s.GoBody.Pn("var %s gi.Argument", varRet)
 	}
-	s.GoBody.Pn("invoker.Call(%s, %s)", callArgArgs, callArgRet)
+	s.GoBody.Pn("%s.Call(%s, %s)", varInvoker, callArgArgs, callArgRet)
 
 	for _, line := range afterCallLines {
 		s.GoBody.Pn(line)
@@ -131,25 +132,28 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	s.GoBody.Pn("}") // end func
 }
 
-var goKeywords = []string{
-	// keywords:
+var globalKeywords = []string{
+	// Go 语言关键字:
 	"break", "default", "func", "interface", "select",
 	"case", "defer", "go", "map", "struct",
 	"chan", "else", "goto", "package", "switch",
 	"const", "fallthrough", "if", "range", "type",
 	"continue", "for", "import", "return", "var",
 
-	// funcs:
+	// Go 语言内建函数:
 	"append", "cap", "close", "complex", "copy", "delete", "imag",
 	"len", "make", "new", "panic", "print", "println", "real", "recover",
+
+	// 全局变量
+	"_I",
 }
 
-var goKeywordMap map[string]struct{}
+var globalKeywordsMap map[string]struct{}
 
 func init() {
-	goKeywordMap = make(map[string]struct{})
-	for _, kw := range goKeywords {
-		goKeywordMap[kw] = struct{}{}
+	globalKeywordsMap = make(map[string]struct{})
+	for _, kw := range globalKeywords {
+		globalKeywordsMap[kw] = struct{}{}
 	}
 }
 
@@ -177,8 +181,7 @@ func (vr *VarReg) alloc(prefix string) string {
 		}
 	}
 	if !found {
-		// try keyword
-		_, ok := goKeywordMap[prefix]
+		_, ok := globalKeywordsMap[prefix]
 		if ok {
 			// 和关键字重名了
 			newVarIdx = 1
@@ -198,15 +201,14 @@ func (v varNameIdx) String() string {
 	return fmt.Sprintf("%s%d", v.name, v.idx)
 }
 
-type parseArgTypeResult struct {
+type parseArgTypeDirInResult struct {
 	newArg string // gi.NewArgument 用的
 	type0  string // go函数形参中的类型
 	beforeArgLines []string // 在 arg_xxx = gi.NewXXXArgument 之前执行的语句
 	afterCallLines []string  // 在 invoker.Call() 之后执行的语句
 }
 
-func parseArgType(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeResult {
-	//dir := arg.Direction()
+func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirInResult {
 	// 目前只考虑 direction 为 in 的情况
 	var newArg string
 	var beforeArgLines []string
@@ -222,12 +224,12 @@ func parseArgType(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeR
 		// arg = gi.NewStringArgument(pArg)
 		// after call:
 		// gi.Free(pArg)
-		varPArg := varReg.alloc("p_" + varArg)
+		varCArg := varReg.alloc("c_" + varArg)
 		beforeArgLines = append(beforeArgLines,
-			fmt.Sprintf("%s := gi.CString(%s)", varPArg, varArg))
-		newArg = fmt.Sprintf("gi.NewStringArgument(%s)", varPArg)
+			fmt.Sprintf("%s := gi.CString(%s)", varCArg, varArg))
+		newArg = fmt.Sprintf("gi.NewStringArgument(%s)", varCArg)
 		afterCallLines = append(afterCallLines,
-			fmt.Sprintf("gi.Free(%s)", varPArg))
+			fmt.Sprintf("gi.Free(%s)", varCArg))
 		type0 = "string"
 
 	case gi.TYPE_TAG_BOOLEAN,
@@ -304,7 +306,7 @@ func parseArgType(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeR
 		newArg = fmt.Sprintf("gi.NewTODOArgument(%s)", varArg)
 	}
 
-	return &parseArgTypeResult{
+	return &parseArgTypeDirInResult{
 		newArg:         newArg,
 		type0:          type0,
 		beforeArgLines: beforeArgLines,
