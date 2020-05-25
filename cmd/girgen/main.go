@@ -2,9 +2,10 @@ package main
 
 import (
 	"flag"
-	"github.com/electricface/go-gir3/gi"
 	"log"
 	"path/filepath"
+
+	"github.com/electricface/go-gir3/gi"
 )
 
 var optNamespace string
@@ -34,13 +35,14 @@ func main() {
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
 	sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", optNamespace)
 	sourceFile.GoBody.Pn("func init() {")
+	sourceFile.GoBody.Pn("repo := gi.DefaultRepository()")
 	sourceFile.GoBody.Pn("_, err := repo.Require(%q, %q, gi.REPOSITORY_LOAD_FLAG_LAZY)",
 		optNamespace, optVersion)
 	sourceFile.GoBody.Pn("if err != nil {")
 	sourceFile.GoBody.Pn("    panic(err)")
-	sourceFile.GoBody.Pn("}")  // end if
+	sourceFile.GoBody.Pn("}") // end if
 
-	sourceFile.GoBody.Pn("}")  // end func
+	sourceFile.GoBody.Pn("}") // end func
 
 	num := repo.NumInfo(optNamespace)
 	for i := 0; i < num; i++ {
@@ -126,4 +128,3 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo) {
 	}
 	s.GoBody.Pn(")") // end const
 }
-

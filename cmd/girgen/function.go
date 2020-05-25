@@ -51,7 +51,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		if dir == gi.DIRECTION_IN || dir == gi.DIRECTION_INOUT {
 			// 作为 go 函数的输入参数之一
 
-			type0 := "TODO_TYPE"
+			type0 := "int/*TODO:TYPE*/"
 			if dir == gi.DIRECTION_IN {
 				parseResult := parseArgTypeDirIn(varArg, argTypeInfo, &varReg)
 
@@ -118,13 +118,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	{ // 处理 invoker 获取失败的情况
 
-		s.GoBody.Pn("if err != nil {")
+		s.GoBody.Pn("if %s != nil {", varErr)
 
 		if isThrows {
 			// 使用 err 变量返回错误
 		} else {
 			// 把 err 打印出来
-			s.GoBody.Pn("log.Println(\"WARN:\", err) /*go:log*/")
+			s.GoBody.Pn("log.Println(\"WARN:\", %s) /*go:log*/", varErr)
 		}
 		s.GoBody.Pn("return")
 
@@ -173,7 +173,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		s.GoBody.Pn("%v.Free()", varCMemArgs)
 	}
 
-	if !isRetVoid {
+	if !isRetVoid || isThrows {
 		s.GoBody.Pn("return")
 	}
 
@@ -211,8 +211,8 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 
 	default:
 		// 未知类型
-		expr = varRet + ".TODO()"
-		type0 = "TODO_TYPE"
+		expr = varRet + ".Int()/*TODO*/"
+		type0 = "int/*TODO_TYPE*/"
 	}
 
 	return &parseRetTypeResult{
@@ -396,8 +396,8 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 
 	default:
 		// 未知类型
-		type0 = "TODO_TYPE"
-		newArg = fmt.Sprintf("gi.NewTODOArgument(%s)", varArg)
+		type0 = "int/*TODO:TYPE*/"
+		newArg = fmt.Sprintf("gi.NewIntArgument(%s)/*TODO*/", varArg)
 	}
 
 	return &parseArgTypeDirInResult{
