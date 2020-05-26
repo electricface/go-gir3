@@ -20,7 +20,7 @@ static inline char *gpointer_to_charp(gpointer p) { return p; }
 static inline gchar **next_gcharptr(gchar **s) { return s+1; }
 
 static void wrap_ffi_call(ffi_cif *cif, void (*fn)(void), void *rvalue,
-	GIArgument *args, int n_args) {
+	GIArgument *args, int n_args, void *out_args) {
 
 	void **avalue = NULL;
 	if (n_args > 0) {
@@ -1201,35 +1201,14 @@ func (fi *FunctionInfo) PrepInvoker() (Invoker, error) {
 	return Invoker{c: &cInvoker}, nil
 }
 
-func (invoker Invoker) Call(args []Argument, retVal *Argument) {
+func (invoker Invoker) Call(args []Argument, retVal *Argument, pOutArgs *Argument) {
+	// pOutArgs 是用来传入 C 的 wrap_ffi_call 函数的，防止它指向的 outArgs 数组的地址改变。
 	var cArgs *C.GIArgument
 	if len(args) > 0 {
 		cArgs = (*C.GIArgument)(unsafe.Pointer(&args[0]))
 	}
-	cRetVal := unsafe.Pointer(retVal)
 	C.wrap_ffi_call(&invoker.c.cif, (*[0]byte)(unsafe.Pointer(invoker.c.native_address)),
-		cRetVal, cArgs, C.int(len(args)))
-}
-
-// 为 direction 为 inout 或 out 的参数分配的 C 语言内存，
-// 之后会把这些内存的指针转化为 PointerArgument，然后传给 Invoker.Call 方法。
-func AllocArgs(num int) CMemArgs {
-	ptr := (unsafe.Pointer)(C.malloc(C.size_t(uintptr(num) * unsafe.Sizeof(uintptr(0)))))
-	return CMemArgs{P: ptr}
-}
-
-type CMemArgs struct {
-	P unsafe.Pointer
-}
-
-func (a CMemArgs) Free() {
-	Free(a.P)
-}
-
-func (a CMemArgs) Pointer(idx int) unsafe.Pointer {
-	return unsafe.Pointer(
-		uintptr(a.P) + uintptr(idx)*unsafe.Sizeof(uintptr(0)),
-	)
+		unsafe.Pointer(retVal), cArgs, C.int(len(args)), unsafe.Pointer(pOutArgs))
 }
 
 //------------------------------------------------------------------------------

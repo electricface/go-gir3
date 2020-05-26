@@ -35,7 +35,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	var afterCallLines []string
 
 	// direction 为 inout 或 out 的参数个数
-	var numArgOut int
+	var numOutArgs int
 
 	numArg := fi.NumArg()
 	for i := 0; i < numArg; i++ {
@@ -44,7 +44,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		dir := fiArg.Direction()
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
-			numArgOut++
+			numOutArgs++
 		}
 
 		varArg := varReg.alloc(fiArg.Name())
@@ -131,10 +131,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		s.GoBody.Pn("}") // end if err != nil
 	}
 
-	var varCMemArgs string
-	if numArgOut > 0 {
-		varCMemArgs = varReg.alloc("cma")
-		s.GoBody.Pn("%v := gi.AllocArgs(%v)", varCMemArgs, numArgOut)
+	var varOutArgs string
+	if numOutArgs > 0 {
+		varOutArgs = varReg.alloc("outArgs")
+		s.GoBody.Pn("var %s [%d]gi.Argument", varOutArgs, numOutArgs)
 	}
 
 	for _, line := range beforeArgLines {
@@ -159,7 +159,11 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		callArgRet = "&" + varRet
 		s.GoBody.Pn("var %s gi.Argument", varRet)
 	}
-	s.GoBody.Pn("%s.Call(%s, %s)", varInvoker, callArgArgs, callArgRet)
+	callArgOutArgs := "nil"
+	if numOutArgs > 0 {
+		callArgOutArgs = fmt.Sprintf("&%s[0]", varOutArgs)
+	}
+	s.GoBody.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
 
 	if !isRetVoid && parseRetTypeResult != nil {
 		s.GoBody.Pn("%s = %s", varResult, parseRetTypeResult.expr)
@@ -167,10 +171,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	for _, line := range afterCallLines {
 		s.GoBody.Pn(line)
-	}
-
-	if numArgOut > 0 {
-		s.GoBody.Pn("%v.Free()", varCMemArgs)
 	}
 
 	if !isRetVoid || isThrows {
