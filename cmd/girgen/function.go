@@ -15,12 +15,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
 
+	// TODO： 修正函数名
 	fnName := fi.Name()
 
-	// 函数内参数分配器
+	// 函数内变量名称分配器
 	var varReg VarReg
-	// 目标函数形参列表
-	var args []string
+	// 目标函数形参列表，元素是 "名字 类型"
+	var params []string
 	// 目标函数返回参数列表，元素是 "名字 类型"
 	var retParams []string
 
@@ -36,6 +37,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	// direction 为 inout 或 out 的参数个数
 	var numOutArgs int
+	var outArgIdx int
+
+	var varOutArgs string
 
 	numArg := fi.NumArg()
 	for i := 0; i < numArg; i++ {
@@ -45,30 +49,46 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
 			numOutArgs++
+			if varOutArgs == "" {
+				varOutArgs = varReg.alloc("outArgs")
+			}
 		}
 
-		varArg := varReg.alloc(fiArg.Name())
+		paramName := varReg.alloc(fiArg.Name())
+
 		if dir == gi.DIRECTION_IN || dir == gi.DIRECTION_INOUT {
-			// 作为 go 函数的输入参数之一
+			// 作为目标函数的输入参数之一
 
 			type0 := "int/*TODO:TYPE*/"
 			if dir == gi.DIRECTION_IN {
-				parseResult := parseArgTypeDirIn(varArg, argTypeInfo, &varReg)
+				parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &varReg)
 
 				type0 = parseResult.type0
 				beforeArgLines = append(beforeArgLines, parseResult.beforeArgLines...)
 
-				varArg := varReg.alloc("arg_" + varArg)
+				varArg := varReg.alloc("arg_" + paramName)
 				argNames = append(argNames, varArg)
-				newArgLines = append(newArgLines, fmt.Sprintf("%s := %s", varArg, parseResult.newArg))
+				newArgLines = append(newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArg))
 
 				afterCallLines = append(afterCallLines, parseResult.afterCallLines...)
+			} else {
+				// TODO：处理 dir 为 inout 的
 			}
 
-			args = append(args, varArg+" "+type0)
+			params = append(params, paramName+" "+type0)
+
 		} else if dir == gi.DIRECTION_OUT {
-			// 作为 go 函数的返回值之一
-			// TODO
+			// 作为目标函数的返回值之一
+			parseResult := parseArgTypeDirOut(argTypeInfo, &varReg)
+			type0 := parseResult.type0
+			retParams = append(retParams, paramName+" "+type0)
+
+			varArg := varReg.alloc("arg_" + paramName)
+			argNames = append(argNames, varArg)
+			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
+			afterCallLines = append(afterCallLines, fmt.Sprintf("%v = %v[%v].%v", paramName, varOutArgs, outArgIdx, parseResult.expr))
+
+			outArgIdx++
 		}
 
 		argTypeInfo.Unref()
@@ -92,7 +112,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		varRet = varReg.alloc("ret")
 		varResult = varReg.alloc("result")
 		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg)
-		retParams = append(retParams, varResult+" "+parseRetTypeResult.type0)
+		retParams = append([]string{varResult + " " + parseRetTypeResult.type0}, retParams...)
 	}
 
 	fnFlags := fi.Flags()
@@ -104,14 +124,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		retParams = append(retParams, varErr+" error")
 	}
 
-	argsJoined := strings.Join(args, ", ")
+	paramsJoined := strings.Join(params, ", ")
 
 	retParamsJoined := strings.Join(retParams, ", ")
 	if len(retParams) > 0 {
 		retParamsJoined = "(" + retParamsJoined + ")"
 	}
 	// 输出目标函数头部
-	s.GoBody.Pn("func %s(%s) %s {", fnName, argsJoined, retParamsJoined)
+	s.GoBody.Pn("func %s(%s) %s {", fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
 	s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fnName)
@@ -131,9 +151,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		s.GoBody.Pn("}") // end if err != nil
 	}
 
-	var varOutArgs string
 	if numOutArgs > 0 {
-		varOutArgs = varReg.alloc("outArgs")
 		s.GoBody.Pn("var %s [%d]gi.Argument", varOutArgs, numOutArgs)
 	}
 
@@ -173,7 +191,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		s.GoBody.Pn(line)
 	}
 
-	if !isRetVoid || isThrows {
+	if len(retParams) > 0 {
 		s.GoBody.Pn("return")
 	}
 
@@ -221,12 +239,51 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 	}
 }
 
-func parseArgTypeDirOut() {
+type parseArgTypeDirOutResult struct {
+	expr  string // 转换 arguemnt 为返回值类型的表达式
+	type0 string // 目标函数中返回值类型
+}
 
+func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
+	expr := ""
+	type0 := ""
+	tag := ti.Tag()
+	switch tag {
+	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
+		// 字符串类型
+		// 产生类似如下代码：
+		// outArg1 = &outArgs[0].String().Take()
+		//                       ^--------------
+		expr = "String().Take()"
+		type0 = "string"
+
+	case gi.TYPE_TAG_BOOLEAN,
+		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
+		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
+		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
+		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
+		// 简单类型
+		// 产生类似如下代码：
+		// outArg1 = &outArgs[0].Bool()
+		//                       ^_____
+		expr = fmt.Sprintf("%s()", getArgumentMethodPart(tag))
+		type0 = getTypeTagType(tag)
+
+	default:
+		// 未知类型
+		expr = "Int()/*TODO*/"
+		type0 = "int/*TODO_TYPE*/"
+	}
+
+	return &parseArgTypeDirOutResult{
+		expr:  expr,
+		type0: type0,
+	}
 }
 
 func parseArgTypeDirInOut() {
-
+	// TODO
 }
 
 type parseArgTypeDirInResult struct {

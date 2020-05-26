@@ -33,7 +33,10 @@ func main() {
 	sourceFile := NewSourceFile(pkg)
 
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
+	sourceFile.AddGoImport("unsafe")
+
 	sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", optNamespace)
+	sourceFile.GoBody.Pn("var _ unsafe.Pointer")
 	sourceFile.GoBody.Pn("func init() {")
 	sourceFile.GoBody.Pn("repo := gi.DefaultRepository()")
 	sourceFile.GoBody.Pn("_, err := repo.Require(%q, %q, gi.REPOSITORY_LOAD_FLAG_LAZY)",
