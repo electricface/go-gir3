@@ -15,8 +15,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
 
-	// TODO： 修正函数名
-	fnName := fi.Name()
+	fiName := fi.Name()
+	fnName := snake2Camel(fiName)
 
 	// 函数内变量名称分配器
 	var varReg VarReg
@@ -68,7 +68,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 				varArg := varReg.alloc("arg_" + paramName)
 				argNames = append(argNames, varArg)
-				newArgLines = append(newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArg))
+				newArgLines = append(newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArgExpr))
 
 				afterCallLines = append(afterCallLines, parseResult.afterCallLines...)
 			} else {
@@ -134,7 +134,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	s.GoBody.Pn("func %s(%s) %s {", fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
-	s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fnName)
+	s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
 
 	{ // 处理 invoker 获取失败的情况
 
@@ -224,8 +224,8 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 		// 简单类型
 		// 产生类似如下代码：
 		// result = ret.Bool()
-		expr = fmt.Sprintf("%s.%s()", varRet, getArgumentMethodPart(tag))
-		type0 = getTypeTagType(tag)
+		expr = fmt.Sprintf("%s.%s()", varRet, getArgumentType(tag))
+		type0 = getTypeWithTag(tag)
 
 	default:
 		// 未知类型
@@ -267,8 +267,8 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 		// 产生类似如下代码：
 		// outArg1 = &outArgs[0].Bool()
 		//                       ^_____
-		expr = fmt.Sprintf("%s()", getArgumentMethodPart(tag))
-		type0 = getTypeTagType(tag)
+		expr = fmt.Sprintf("%s()", getArgumentType(tag))
+		type0 = getTypeWithTag(tag)
 
 	default:
 		// 未知类型
@@ -287,14 +287,13 @@ func parseArgTypeDirInOut() {
 }
 
 type parseArgTypeDirInResult struct {
-	newArg         string   // gi.NewArgument 用的
-	type0          string   // go函数形参中的类型
+	newArgExpr     string   // 创建 Argument 的表达式，比如 gi.NewIntArgument()
+	type0          string   // 目标函数形参中的类型
 	beforeArgLines []string // 在 arg_xxx = gi.NewXXXArgument 之前执行的语句
 	afterCallLines []string // 在 invoker.Call() 之后执行的语句
 }
 
-// TODO 重命名它
-func getTypeTagType(tag gi.TypeTag) (type0 string) {
+func getTypeWithTag(tag gi.TypeTag) (type0 string) {
 	switch tag {
 	case gi.TYPE_TAG_BOOLEAN:
 		type0 = "bool"
@@ -326,7 +325,7 @@ func getTypeTagType(tag gi.TypeTag) (type0 string) {
 	return
 }
 
-func getArgumentMethodPart(tag gi.TypeTag) (str string) {
+func getArgumentType(tag gi.TypeTag) (str string) {
 	switch tag {
 	case gi.TYPE_TAG_BOOLEAN:
 		str = "Bool"
@@ -361,7 +360,7 @@ func getArgumentMethodPart(tag gi.TypeTag) (str string) {
 
 func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirInResult {
 	// 目前只考虑 direction 为 in 的情况
-	var newArg string
+	var newArgExpr string
 	var beforeArgLines []string
 	var afterCallLines []string
 	var type0 string
@@ -371,14 +370,15 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		// 字符串类型
 		// 产生类似如下代码：
-		// pArg = gi.CString(arg)
-		// arg = gi.NewStringArgument(pArg)
+		// c_arg1 = gi.CString(arg1)
+		// arg_arg1 = gi.NewStringArgument(c_arg1)
+		//            ^---------------------------
 		// after call:
-		// gi.Free(pArg)
+		// gi.Free(c_arg1)
 		varCArg := varReg.alloc("c_" + varArg)
 		beforeArgLines = append(beforeArgLines,
 			fmt.Sprintf("%s := gi.CString(%s)", varCArg, varArg))
-		newArg = fmt.Sprintf("gi.NewStringArgument(%s)", varCArg)
+		newArgExpr = fmt.Sprintf("gi.NewStringArgument(%s)", varCArg)
 		afterCallLines = append(afterCallLines,
 			fmt.Sprintf("gi.Free(%s)", varCArg))
 		type0 = "string"
@@ -391,86 +391,20 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
 		// 简单类型
 
-		middle := ""
-		switch tag {
-		case gi.TYPE_TAG_BOOLEAN:
-			middle = "Bool"
-		case gi.TYPE_TAG_INT8:
-			middle = "Int8"
-		case gi.TYPE_TAG_UINT8:
-			middle = "Uint8"
-
-		case gi.TYPE_TAG_INT16:
-			middle = "Int16"
-		case gi.TYPE_TAG_UINT16:
-			middle = "Uint16"
-
-		case gi.TYPE_TAG_INT32:
-			middle = "Int32"
-		case gi.TYPE_TAG_UINT32:
-			middle = "Uint32"
-
-		case gi.TYPE_TAG_INT64:
-			middle = "Int64"
-		case gi.TYPE_TAG_UINT64:
-			middle = "Uint64"
-
-		case gi.TYPE_TAG_FLOAT:
-			middle = "Float"
-		case gi.TYPE_TAG_DOUBLE:
-			middle = "Double"
-		}
-		newArg = fmt.Sprintf("gi.New%sArgument(%s)", middle, varArg)
-
-		switch tag {
-		case gi.TYPE_TAG_BOOLEAN:
-			type0 = "bool"
-		case gi.TYPE_TAG_INT8:
-			type0 = "int8"
-		case gi.TYPE_TAG_UINT8:
-			type0 = "uint8"
-
-		case gi.TYPE_TAG_INT16:
-			type0 = "int16"
-		case gi.TYPE_TAG_UINT16:
-			type0 = "uint16"
-
-		case gi.TYPE_TAG_INT32:
-			type0 = "int32"
-		case gi.TYPE_TAG_UINT32:
-			type0 = "uint32"
-
-		case gi.TYPE_TAG_INT64:
-			type0 = "int64"
-		case gi.TYPE_TAG_UINT64:
-			type0 = "uint64"
-
-		case gi.TYPE_TAG_FLOAT:
-			type0 = "float32"
-		case gi.TYPE_TAG_DOUBLE:
-			type0 = "float64"
-		}
+		argType := getArgumentType(tag)
+		newArgExpr = fmt.Sprintf("gi.New%sArgument(%s)", argType, varArg)
+		type0 = getTypeWithTag(tag)
 
 	default:
 		// 未知类型
 		type0 = "int/*TODO:TYPE*/"
-		newArg = fmt.Sprintf("gi.NewIntArgument(%s)/*TODO*/", varArg)
+		newArgExpr = fmt.Sprintf("gi.NewIntArgument(%s)/*TODO*/", varArg)
 	}
 
 	return &parseArgTypeDirInResult{
-		newArg:         newArg,
+		newArgExpr:     newArgExpr,
 		type0:          type0,
 		beforeArgLines: beforeArgLines,
 		afterCallLines: afterCallLines,
 	}
 }
-
-/*
-direction: in
-作为参数
-direction: out
-作为返回值
-
-direction: inout
-作为参数，之后要把参数给修改了 *arg =
-*/

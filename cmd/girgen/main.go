@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"path/filepath"
+	"strings"
 
 	"github.com/electricface/go-gir3/gi"
 )
@@ -72,11 +73,11 @@ func main() {
 		case gi.INFO_TYPE_ENUM:
 			log.Println(name, "ENUM")
 			ei := gi.ToEnumInfo(bi)
-			pEnum(sourceFile, ei)
+			pEnum(sourceFile, ei, true)
 		case gi.INFO_TYPE_FLAGS:
 			log.Println(name, "FLAGS")
 			ei := gi.ToEnumInfo(bi)
-			pEnum(sourceFile, ei)
+			pEnum(sourceFile, ei, false)
 		case gi.INFO_TYPE_OBJECT:
 			log.Println(name, "OBJECT")
 			oi := gi.ToObjectInfo(bi)
@@ -113,9 +114,19 @@ func main() {
 	sourceFile.Save(outFile)
 }
 
-func pEnum(s *SourceFile, enum *gi.EnumInfo) {
+func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 	name := enum.Name()
-	s.GoBody.Pn("type %s int", name)
+	type0 := name
+	if isEnum {
+		type0 += "Enum"
+	} else {
+		// is Flags
+		if !strings.HasSuffix(type0, "Flags") {
+			type0 += "Flags"
+		}
+		// NOTE： 为了避免 enum 和函数重名了，比如 enum FileTest 和 file_test 函数, 就加上 Flags 后缀。
+	}
+	s.GoBody.Pn("type %s int", type0)
 	s.GoBody.Pn("const (")
 	num := enum.NumValue()
 	for i := 0; i < num; i++ {
@@ -123,7 +134,7 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo) {
 		val := value.Value()
 		memberName := name + snake2Camel(value.Name())
 		if i == 0 {
-			s.GoBody.Pn("%s %s = %v", memberName, name, val)
+			s.GoBody.Pn("%s %s = %v", memberName, type0, val)
 		} else {
 			s.GoBody.Pn("%s = %v", memberName, val)
 		}
