@@ -61,13 +61,8 @@ func main() {
 		case gi.INFO_TYPE_CALLBACK:
 		case gi.INFO_TYPE_STRUCT:
 			log.Println(name, "STRUCT")
-
 			si := gi.ToStructInfo(bi)
-			num := si.NumMethod()
-			for j := 0; j < num; j++ {
-				//fi := si.Method(j)
-				//checkFi(fi)
-			}
+			pStruct(sourceFile, si)
 
 		case gi.INFO_TYPE_BOXED:
 		case gi.INFO_TYPE_ENUM:
@@ -141,4 +136,19 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 		value.Unref()
 	}
 	s.GoBody.Pn(")") // end const
+}
+
+func pStruct(s *SourceFile, si *gi.StructInfo) {
+	name := si.Name()
+	s.GoBody.Pn("// Struct %s", name)
+
+	s.GoBody.Pn("type %s struct {", name)
+	s.GoBody.Pn("    Ptr unsafe.Pointer")
+	s.GoBody.Pn("}")
+
+	numMethod := si.NumMethod()
+	for i := 0; i < numMethod; i++ {
+		fi := si.Method(i)
+		pFunction(s, fi)
+	}
 }

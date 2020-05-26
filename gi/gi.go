@@ -554,6 +554,8 @@ func (d Direction) String() (str string) {
 		str = "out"
 	case DIRECTION_INOUT:
 		str = "inout"
+	default:
+		str = fmt.Sprintf("invalid-direction(%d)", d)
 	}
 	return
 }
@@ -565,11 +567,41 @@ const (
 	SCOPE_TYPE_NOTIFIED ScopeType = C.GI_SCOPE_TYPE_NOTIFIED
 )
 
+func (s ScopeType) String() (str string) {
+	switch s {
+	case SCOPE_TYPE_INVALID:
+		str = "invalid"
+	case SCOPE_TYPE_CALL:
+		str = "call"
+	case SCOPE_TYPE_ASYNC:
+		str = "async"
+	case SCOPE_TYPE_NOTIFIED:
+		str = "notified"
+	default:
+		str = fmt.Sprintf("invalid-scope-type(%d)", s)
+	}
+	return
+}
+
 const (
 	TRANSFER_NOTHING    Transfer = C.GI_TRANSFER_NOTHING
 	TRANSFER_CONTAINER  Transfer = C.GI_TRANSFER_CONTAINER
 	TRANSFER_EVERYTHING Transfer = C.GI_TRANSFER_EVERYTHING
 )
+
+func (t Transfer) String() (str string) {
+	switch t {
+	case TRANSFER_NOTHING:
+		str = "nothing"
+	case TRANSFER_CONTAINER:
+		str = "container"
+	case TRANSFER_EVERYTHING:
+		str = "everything"
+	default:
+		str = fmt.Sprintf("invalid-transfer(%d)", t)
+	}
+	return
+}
 
 // g_arg_info_get_direction
 func (ai *ArgInfo) Direction() Direction {
@@ -1183,6 +1215,11 @@ type strPtr struct {
 func (v strPtr) Take() string {
 	str := C.GoString((*C.char)(v.P))
 	C.free(v.P)
+	return str
+}
+
+func (v strPtr) Copy() string {
+	str := C.GoString((*C.char)(v.P))
 	return str
 }
 

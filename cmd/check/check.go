@@ -2,8 +2,9 @@ package main
 
 import (
 	"flag"
-	"github.com/electricface/go-gir3/gi"
 	"log"
+
+	"github.com/electricface/go-gir3/gi"
 )
 
 func checkFi(fi *gi.FunctionInfo) {
@@ -13,6 +14,7 @@ func checkFi(fi *gi.FunctionInfo) {
 	num := fi.NumArg()
 	for i := 0; i < num; i++ {
 		argInfo := fi.Arg(i)
+		transfer := argInfo.OwnershipTransfer()
 		dir := argInfo.Direction()
 
 		argName := argInfo.Name()
@@ -22,14 +24,15 @@ func checkFi(fi *gi.FunctionInfo) {
 
 		isPtr := argTypeInfo.IsPointer()
 
-		log.Printf("arg %s, dir: %v, isPtr: %v, type.tag: %s", argName, dir, isPtr, tag)
+		log.Printf("arg %s, ts: %v, dir: %v, isPtr: %v, type.tag: %s", argName, transfer, dir, isPtr, tag)
 
 		argTypeInfo.Unref()
 		argInfo.Unref()
 	}
 
 	retTypeInfo := fi.ReturnType()
-	log.Printf("return isPtr: %v, tag: %v", retTypeInfo.IsPointer(), retTypeInfo.Tag())
+	retTransfer := fi.CallerOwns()
+	log.Printf("return ts: %v isPtr: %v, tag: %v", retTransfer, retTypeInfo.IsPointer(), retTypeInfo.Tag())
 	retTypeInfo.Unref()
 }
 
