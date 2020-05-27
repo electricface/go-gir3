@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/electricface/go-gir3/gi"
@@ -11,6 +12,7 @@ var globalFuncNextIdx int
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
+	log.Println("function", symbol)
 	s.GoBody.Pn("// %s", symbol)
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
@@ -40,9 +42,60 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	var outArgIdx int
 
 	var varOutArgs string
+	var receiver string
+
+	// 如果为 true，则 C 函数函数中最后一个是 **GError err
+	var isThrows bool
+
+	fnFlags := fi.Flags()
+	varErr := varReg.alloc("err")
+	if fnFlags&gi.FUNCTION_THROWS != 0 {
+		isThrows = true
+	}
+
+	argIdxStart := 0
+	container := fi.Container()
+	if container != nil {
+		log.Println("container is not nil")
+		s.GoBody.Pn("// container is not nil, container is %s", container.Name())
+		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
+			// 表示 C 函数是构造器
+			s.GoBody.Pn("// is constructor")
+			fnName = getConstructorName(fi.Container().Name(), fnName)
+		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
+			// 表示 C 函数是方法
+			s.GoBody.Pn("// is method")
+			varV := varReg.alloc("v")
+			receiver = fmt.Sprintf("(%s %s)", varV, fi.Container().Name())
+			varArgV := varReg.alloc("arg_v")
+			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%v.P)", varArgV, varV))
+			argNames = append(argNames, varArgV)
+		} else {
+			// 还是表示 C 函数是方法，只不过没有处理好参数，fi.Arg 还可以去到 receiver 参数。
+			if fi.NumArg() > 0 {
+				s.GoBody.Pn("// is method")
+
+				//arg0 := fi.Arg(0)
+				//arg0Type := arg0.Type()
+				//s.GoBody.Pn("type: name: %s , isptr: %v", arg0Type.Name(), arg0Type.IsPointer())
+
+				// TODO 重复代码警告
+				varV := varReg.alloc("v")
+				receiver = fmt.Sprintf("(%s %s)", varV, fi.Container().Name())
+				varArgV := varReg.alloc("arg_v")
+				newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%v.P)", varArgV, varV))
+				argNames = append(argNames, varArgV)
+
+				// 从 1 开始
+				argIdxStart = 1
+			}
+		}
+	} else {
+		s.GoBody.Pn("// container is nil")
+	}
 
 	numArg := fi.NumArg()
-	for i := 0; i < numArg; i++ {
+	for i := argIdxStart; i < numArg; i++ {
 		fiArg := fi.Arg(i)
 		argTypeInfo := fiArg.Type()
 		dir := fiArg.Direction()
@@ -94,6 +147,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		argTypeInfo.Unref()
 		fiArg.Unref()
 	}
+	if isThrows {
+		// TODO: 需要把 **GError err 加入out参数列表
+		retParams = append(retParams, varErr+" error")
+	}
 
 	retTypeInfo := fi.ReturnType()
 	defer retTypeInfo.Unref()
@@ -115,15 +172,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		retParams = append([]string{varResult + " " + parseRetTypeResult.type0}, retParams...)
 	}
 
-	fnFlags := fi.Flags()
-	varErr := varReg.alloc("err")
-	var isThrows bool
-	if fnFlags&gi.FUNCTION_THROWS != 0 {
-		// TODO: 需要把 **GError err 加入参数列表
-		isThrows = true
-		retParams = append(retParams, varErr+" error")
-	}
-
 	paramsJoined := strings.Join(params, ", ")
 
 	retParamsJoined := strings.Join(retParams, ", ")
@@ -131,7 +179,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		retParamsJoined = "(" + retParamsJoined + ")"
 	}
 	// 输出目标函数头部
-	s.GoBody.Pn("func %s(%s) %s {", fnName, paramsJoined, retParamsJoined)
+	s.GoBody.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
 	s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)

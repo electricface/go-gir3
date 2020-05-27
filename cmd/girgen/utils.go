@@ -84,14 +84,14 @@ type VarReg struct {
 
 type varNameIdx struct {
 	name string
-	idx int
+	idx  int
 }
 
 func (vr *VarReg) alloc(prefix string) string {
 	var found bool
-	newVarIdx  := 0
+	newVarIdx := 0
 	if len(vr.vars) > 0 {
-		for i := len(vr.vars) - 1; i >=0; i-- {
+		for i := len(vr.vars) - 1; i >= 0; i-- {
 			// 从尾部开始查找
 			nameIdx := vr.vars[i]
 			if prefix == nameIdx.name {
@@ -113,7 +113,6 @@ func (vr *VarReg) alloc(prefix string) string {
 	return nameIdx.String()
 }
 
-
 func (v varNameIdx) String() string {
 	if v.idx == 0 {
 		return v.name
@@ -122,3 +121,14 @@ func (v varNameIdx) String() string {
 	return fmt.Sprintf("%s%d", v.name, v.idx)
 }
 
+func getConstructorName(containerName, fnName string) string {
+	if fnName == "New" {
+		return "New" + containerName
+	}
+	if strings.HasPrefix(fnName, "New") {
+		// DesktopAppInfo.NewFromFilename  => NewDesktopAppInfoFromFilename
+		return "New" + containerName + strings.TrimPrefix(fnName, "New")
+	}
+	// DesktopAppInfo.CreateWithPath => DesktopAppInfoCreateWithPath
+	return containerName + fnName
+}

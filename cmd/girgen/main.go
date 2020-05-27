@@ -143,7 +143,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 	s.GoBody.Pn("// Struct %s", name)
 
 	s.GoBody.Pn("type %s struct {", name)
-	s.GoBody.Pn("    Ptr unsafe.Pointer")
+	s.GoBody.Pn("    P unsafe.Pointer")
 	s.GoBody.Pn("}")
 
 	numMethod := si.NumMethod()

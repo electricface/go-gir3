@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_snake2Camel(t *testing.T) {
@@ -30,4 +31,11 @@ func TestVarRegAlloc(t *testing.T) {
 
 	varArg = varReg.alloc("type")
 	assert.Equal(t, "type2", varArg)
+}
+
+func Test_getC(t *testing.T) {
+	assert.Equal(t, "NewKeyFile", getConstructorName("KeyFile", "New"))
+	assert.Equal(t, "NewDesktopAppInfoFromFilename",
+		getConstructorName("DesktopAppInfo", "NewFromFilename"))
+	assert.Equal(t, "KeyFileCreateWithPath", getConstructorName("KeyFile", "CreateWithPath"))
 }
