@@ -56,6 +56,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	argIdxStart := 0
 	container := fi.Container()
 	if container != nil {
+		addReceiver := false
 		log.Println("container is not nil")
 		s.GoBody.Pn("// container is not nil, container is %s", container.Name())
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
@@ -65,30 +66,32 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
 			// 表示 C 函数是方法
 			s.GoBody.Pn("// is method")
+			addReceiver = true
+		} else {
+			// 还是表示 C 函数是方法，只不过没有处理好参数，fi.Arg 还可以去到 receiver 参数。
+			if fi.NumArg() > 0 {
+				s.GoBody.Pn("// is method")
+				arg0 := fi.Arg(0)
+				arg0Type := arg0.Type()
+				if arg0Type.IsPointer() {
+					addReceiver = true
+					// 从 1 开始
+					argIdxStart = 1
+				}
+			} else {
+				s.GoBody.Pn("// num arg is 0")
+				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
+				// 但是 Go 里没有类的概念，于是直接忽略这个方法了，但任然会为在 namespace 顶层的 io_channel_error_quark 方法自动生成代码。
+				return
+			}
+		}
+
+		if addReceiver {
 			varV := varReg.alloc("v")
 			receiver = fmt.Sprintf("(%s %s)", varV, fi.Container().Name())
 			varArgV := varReg.alloc("arg_v")
 			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%v.P)", varArgV, varV))
 			argNames = append(argNames, varArgV)
-		} else {
-			// 还是表示 C 函数是方法，只不过没有处理好参数，fi.Arg 还可以去到 receiver 参数。
-			if fi.NumArg() > 0 {
-				s.GoBody.Pn("// is method")
-
-				//arg0 := fi.Arg(0)
-				//arg0Type := arg0.Type()
-				//s.GoBody.Pn("type: name: %s , isptr: %v", arg0Type.Name(), arg0Type.IsPointer())
-
-				// TODO 重复代码警告
-				varV := varReg.alloc("v")
-				receiver = fmt.Sprintf("(%s %s)", varV, fi.Container().Name())
-				varArgV := varReg.alloc("arg_v")
-				newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%v.P)", varArgV, varV))
-				argNames = append(argNames, varArgV)
-
-				// 从 1 开始
-				argIdxStart = 1
-			}
 		}
 	} else {
 		s.GoBody.Pn("// container is nil")
