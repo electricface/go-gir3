@@ -103,6 +103,14 @@ func _GErrorToOSError(err *C.GError) (goerr error) {
 	return
 }
 
+func ToError(ptr unsafe.Pointer) (err error) {
+	if ptr == nil {
+		return nil
+	}
+	cErr := (*C.GError)(unsafe.Pointer(ptr))
+	return _GErrorToOSError(cErr)
+}
+
 // Check for type
 func _ExpectBaseInfoType(bil BaseInfoLike, types ...InfoType) {
 	bi := bil.inheritedFromBaseInfo()

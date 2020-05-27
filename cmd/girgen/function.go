@@ -151,7 +151,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		fiArg.Unref()
 	}
 	if isThrows {
-		// TODO: 需要把 **GError err 加入out参数列表
+		numOutArgs++
+		if varOutArgs == "" {
+			varOutArgs = varReg.alloc("outArgs")
+		}
+		varArg := varReg.alloc("arg_" + varErr)
+		argNames = append(argNames, varArg)
+		newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
+		afterCallLines = append(afterCallLines, fmt.Sprintf("%v = gi.ToError(%v[%v].%v)", varErr, varOutArgs, outArgIdx, "Pointer()"))
 		retParams = append(retParams, varErr+" error")
 	}
 
@@ -185,7 +192,11 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	s.GoBody.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
-	s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
+	if container == nil {
+		s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
+	} else {
+		s.GoBody.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
+	}
 
 	{ // 处理 invoker 获取失败的情况
 
@@ -277,6 +288,19 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 		// result = ret.Bool()
 		expr = fmt.Sprintf("%s.%s()", varRet, getArgumentType(tag))
 		type0 = getTypeWithTag(tag)
+
+	case gi.TYPE_TAG_INTERFACE:
+		if ti.IsPointer() {
+			bi := ti.Interface()
+			// TODO 处理 struct 和 object，interface 有点不一样，struct 可以用 Type{}, 但是 object,interface 不行。
+			expr = fmt.Sprintf("%s{%s.Pointer()}", bi.Name(), varRet)
+			type0 = bi.Name()
+
+		} else {
+			// 不是 pointer 的 interface 太奇怪了
+			expr = varRet + ".Int()/*TODO*/"
+			type0 = "int/*TODO_TYPE*/"
+		}
 
 	default:
 		// 未知类型

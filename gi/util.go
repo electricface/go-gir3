@@ -44,50 +44,41 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 	}
 	defer bi.Unref()
 
-	switch bi.Type() {
+	type0 := bi.Type()
+	var funcInfo *FunctionInfo
+	switch type0 {
 	case INFO_TYPE_FUNCTION:
-		funcInfo := ToFunctionInfo(bi)
-		invoker, err := funcInfo.PrepInvoker()
-		if err != nil {
-			return Invoker{}, err
+		funcInfo = ToFunctionInfo(bi)
+		// NOTE: 不要再 unref funcInfo 了
+
+	case INFO_TYPE_INTERFACE, INFO_TYPE_OBJECT, INFO_TYPE_STRUCT:
+		var methodInfo *FunctionInfo
+		switch type0 {
+		case INFO_TYPE_INTERFACE:
+			ifcInfo := ToInterfaceInfo(bi)
+			methodInfo = ifcInfo.FindMethod(fnName)
+		case INFO_TYPE_OBJECT:
+			objInfo := ToObjectInfo(bi)
+			methodInfo = objInfo.FindMethod(fnName)
+		case INFO_TYPE_STRUCT:
+			si := ToStructInfo(bi)
+			methodInfo = si.FindMethod(fnName)
 		}
-		ic.put(id, invoker)
-		return invoker, nil
-
-	case INFO_TYPE_INTERFACE:
-		ifcInfo := ToInterfaceInfo(bi)
-		methodInfo := ifcInfo.FindMethod(fnName)
-
-		if methodInfo.IsNil() {
-			return Invoker{}, fmt.Errorf("not found %q in interface %v", fnName, name)
-		}
-		defer methodInfo.Unref()
-
-		invoker, err := methodInfo.PrepInvoker()
-		if err != nil {
-			return Invoker{}, err
-		}
-		ic.put(id, invoker)
-		return invoker, nil
-
-	case INFO_TYPE_OBJECT:
-		objInfo := ToObjectInfo(bi)
-		methodInfo := objInfo.FindMethod(fnName)
-
-		if methodInfo.IsNil() {
-			return Invoker{}, fmt.Errorf("not found %q in interface %v", fnName, name)
+		if methodInfo == nil {
+			return Invoker{}, fmt.Errorf("not found %q in %s %v", fnName, type0, name)
 		}
 		defer methodInfo.Unref()
-
-		invoker, err := methodInfo.PrepInvoker()
-		if err != nil {
-			return Invoker{}, err
-		}
-		ic.put(id, invoker)
-		return invoker, nil
+		funcInfo = methodInfo
 
 	default:
 		// TODO: support more type
 		return Invoker{}, fmt.Errorf("unsupported info type %s", bi.Type())
 	}
+
+	invoker, err := funcInfo.PrepInvoker()
+	if err != nil {
+		return Invoker{}, err
+	}
+	ic.put(id, invoker)
+	return invoker, nil
 }
