@@ -8,7 +8,30 @@ import (
 	"github.com/electricface/go-gir3/gi"
 )
 
+// 给 InvokeCache.Get() 用的 index 的
 var globalFuncNextIdx int
+
+func getFunctionName(fi *gi.FunctionInfo) string {
+	fiName := fi.Name()
+	fnName := snake2Camel(fiName)
+
+	fnFlags := fi.Flags()
+	if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
+		// 表示 C 函数是构造器
+		fnName = getConstructorName(fi.Container().Name(), fnName)
+	}
+	return fnName
+}
+
+func getFunctionName2(fi *gi.FunctionInfo) string {
+	// 只用于 pFunction() 中
+	symbol := fi.Symbol()
+	name := globalSymbolNameMap[symbol]
+	if name != "" {
+		return name
+	}
+	return getFunctionName(fi)
+}
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
@@ -18,7 +41,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	globalFuncNextIdx++
 
 	fiName := fi.Name()
-	fnName := snake2Camel(fiName)
+	fnName := getFunctionName2(fi)
 
 	// 函数内变量名称分配器
 	var varReg VarReg
@@ -62,7 +85,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 			// 表示 C 函数是构造器
 			s.GoBody.Pn("// is constructor")
-			fnName = getConstructorName(fi.Container().Name(), fnName)
 		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
 			// 表示 C 函数是方法
 			s.GoBody.Pn("// is method")

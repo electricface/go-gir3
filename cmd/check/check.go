@@ -47,7 +47,7 @@ func init() {
 }
 
 func main() {
-	showMap["func"] = true
+	showMap["struct"] = true
 	flag.Parse()
 
 	repo := gi.DefaultRepository()

@@ -48,8 +48,24 @@ func main() {
 
 	sourceFile.GoBody.Pn("}") // end func
 
-	num := repo.NumInfo(optNamespace)
-	for i := 0; i < num; i++ {
+	numInfos := repo.NumInfo(optNamespace)
+	for i := 0; i < numInfos; i++ {
+		bi := repo.Info(optNamespace, i)
+		name := bi.Name()
+		switch bi.Type() {
+		case gi.INFO_TYPE_STRUCT, gi.INFO_TYPE_UNION, gi.INFO_TYPE_OBJECT, gi.INFO_TYPE_INTERFACE:
+			globalStructNamesMap[name] = struct{}{}
+		}
+		bi.Unref()
+	}
+
+	for i := 0; i < numInfos; i++ {
+		bi := repo.Info(optNamespace, i)
+		handleFuncNameClash(bi)
+		bi.Unref()
+	}
+
+	for i := 0; i < numInfos; i++ {
 		bi := repo.Info(optNamespace, i)
 		name := bi.Name()
 		switch bi.Type() {
@@ -195,5 +211,52 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	for i := 0; i < numMethod; i++ {
 		fi := oi.Method(i)
 		pFunction(s, fi)
+	}
+}
+
+// 处理函数命名冲突
+func handleFuncNameClash(bi *gi.BaseInfo) {
+	switch bi.Type() {
+	case gi.INFO_TYPE_FUNCTION:
+		fi := gi.ToFunctionInfo(bi)
+		_handleFuncNameClash(fi)
+	case gi.INFO_TYPE_STRUCT:
+		si := gi.ToStructInfo(bi)
+		numMethods := si.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			fi := si.Method(i)
+			_handleFuncNameClash(fi)
+		}
+	case gi.INFO_TYPE_UNION:
+		ui := gi.ToUnionInfo(bi)
+		numMethods := ui.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			fi := ui.Method(i)
+			_handleFuncNameClash(fi)
+		}
+	case gi.INFO_TYPE_OBJECT:
+		oi := gi.ToObjectInfo(bi)
+		numMethods := oi.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			fi := oi.Method(i)
+			_handleFuncNameClash(fi)
+		}
+	case gi.INFO_TYPE_INTERFACE:
+		ii := gi.ToInterfaceInfo(bi)
+		numMethods := ii.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			fi := ii.Method(i)
+			_handleFuncNameClash(fi)
+		}
+	}
+}
+
+func _handleFuncNameClash(fi *gi.FunctionInfo) {
+	symbol := fi.Symbol()
+	fn := getFunctionName(fi)
+
+	if _, ok := globalStructNamesMap[fn]; ok {
+		// 方法名和结构体名冲突了
+		globalSymbolNameMap[symbol] = fn + "F"
 	}
 }
