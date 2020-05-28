@@ -127,16 +127,10 @@ func (s *SourceFile) AddGoImport(imp string) {
 	s.GoImports = append(s.GoImports, importStr)
 }
 
-// TODO
-//func (s *SourceFile) AddGirImport(ns string) {
-//	repo := gi.GetLoadedRepo(ns)
-//	if repo == nil {
-//		panic("failed to get loaded repo " + ns)
-//	}
-//	base := strings.ToLower(repo.Namespace.Name) + "-" + repo.Namespace.Version
-//	fullPath := filepath.Join(getGirProjectRoot(), base)
-//	s.AddGoImport(fullPath)
-//}
+func (s *SourceFile) AddGirImport(name string) {
+	fullPath := "github.com/electricface/go-gir/" + name
+	s.AddGoImport(fullPath)
+}
 
 type SourceBody struct {
 	sourceFile *SourceFile
@@ -168,8 +162,7 @@ func (v *SourceBody) writeStr(str string) {
 			}
 
 		case "gir":
-			//v.sourceFile.AddGirImport(arg)
-			// TODO:
+			v.sourceFile.AddGirImport(arg)
 
 		case "ch":
 			v.sourceFile.AddCInclude(arg)

@@ -268,7 +268,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	s.GoBody.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
 
 	if !isRetVoid && parseRetTypeResult != nil {
-		s.GoBody.Pn("%s = %s", varResult, parseRetTypeResult.expr)
+		s.GoBody.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
 	}
 
 	for _, line := range afterCallLines {
@@ -283,7 +283,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 }
 
 type parseRetTypeResult struct {
-	expr  string // 转换 arguemnt 为返回值类型的表达式
+	expr  string // 转换 argument 为返回值类型的表达式
+	field string // expr 要给 result 的什么字段设置，比如 .P 字段
 	type0 string // 目标函数中返回值类型
 }
 
@@ -292,8 +293,10 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 	isPtr := ti.IsPointer()
 	tag := ti.Tag()
 	debugMsg = fmt.Sprintf("isPtr: %v, tag: %v", isPtr, tag)
+
 	type0 := fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
 	expr := varRet + ".Int()/*TODO*/"
+	field := ""
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -318,9 +321,9 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 	case gi.TYPE_TAG_INTERFACE:
 		if isPtr {
 			bi := ti.Interface()
-			type0 = bi.Name()
-			// TODO 处理 struct 和 object，interface 有点不一样，struct 可以用 Type{}, 但是 object,interface 不行。
-			expr = fmt.Sprintf("%s{%s.Pointer()}", bi.Name(), varRet)
+			type0 = getTypeName(bi)
+			expr = fmt.Sprintf("%s.Pointer()", varRet)
+			field = ".P"
 
 			bi.Unref()
 		}
@@ -328,6 +331,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 	}
 
 	return &parseRetTypeResult{
+		field: field,
 		expr:  expr,
 		type0: type0,
 	}
@@ -339,8 +343,8 @@ type parseArgTypeDirOutResult struct {
 }
 
 func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
-	expr := ""
-	type0 := ""
+	expr := "Int()/*TODO*/"
+	type0 := "int/*TODO_TYPE*/"
 	tag := ti.Tag()
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -364,10 +368,9 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 		expr = fmt.Sprintf("%s()", getArgumentType(tag))
 		type0 = getTypeWithTag(tag)
 
-	default:
-		// 未知类型
-		expr = "Int()/*TODO*/"
-		type0 = "int/*TODO_TYPE*/"
+	case gi.TYPE_TAG_INTERFACE:
+		// TODO
+
 	}
 
 	return &parseArgTypeDirOutResult{
@@ -504,7 +507,8 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 	case gi.TYPE_TAG_INTERFACE:
 		if isPtr {
 			bi := ti.Interface()
-			type0 = bi.Name()
+			type0 = getTypeName(bi)
+
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
 			bi.Unref()
 		}
@@ -516,4 +520,34 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		beforeArgLines: beforeArgLines,
 		afterCallLines: afterCallLines,
 	}
+}
+
+func isSameNamespace(ns string) bool {
+	if ns == optNamespace {
+		return true
+	}
+	return false
+}
+
+func getTypeName(bi *gi.BaseInfo) string {
+	ns := bi.Namespace()
+	if isSameNamespace(ns) {
+		return bi.Name()
+	}
+
+	repo := gi.DefaultRepository()
+	deps := repo.Dependencies(optNamespace)
+	pkgBase := ""
+	for _, dep := range deps {
+		if strings.HasPrefix(dep, ns+"-") {
+			pkgBase = strings.ToLower(dep)
+			break
+		}
+	}
+
+	typeName := strings.ToLower(ns) + "." + bi.Name()
+	if pkgBase != "" {
+		typeName += fmt.Sprintf("/*gir:%s*/", pkgBase)
+	}
+	return typeName
 }
