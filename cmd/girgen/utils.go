@@ -132,6 +132,3 @@ func getConstructorName(containerName, fnName string) string {
 	// DesktopAppInfo.CreateWithPath => DesktopAppInfoCreateWithPath
 	return containerName + fnName
 }
-
-var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
-var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。

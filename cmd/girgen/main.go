@@ -21,6 +21,9 @@ func init() {
 	flag.StringVar(&optDir, "d", "", "output directory")
 }
 
+var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
+var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
+
 func main() {
 	flag.Parse()
 
@@ -59,11 +62,8 @@ func main() {
 		bi.Unref()
 	}
 
-	for i := 0; i < numInfos; i++ {
-		bi := repo.Info(optNamespace, i)
-		handleFuncNameClash(bi)
-		bi.Unref()
-	}
+	// 处理函数命名冲突
+	forEachFunctionInfo(repo, optNamespace, handleFuncNameClash)
 
 	for i := 0; i < numInfos; i++ {
 		bi := repo.Info(optNamespace, i)
@@ -214,44 +214,52 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	}
 }
 
-// 处理函数命名冲突
-func handleFuncNameClash(bi *gi.BaseInfo) {
-	switch bi.Type() {
-	case gi.INFO_TYPE_FUNCTION:
-		fi := gi.ToFunctionInfo(bi)
-		_handleFuncNameClash(fi)
-	case gi.INFO_TYPE_STRUCT:
-		si := gi.ToStructInfo(bi)
-		numMethods := si.NumMethod()
-		for i := 0; i < numMethods; i++ {
-			fi := si.Method(i)
-			_handleFuncNameClash(fi)
+func forEachFunctionInfo(repo *gi.Repository, namespace string, fn func(fi *gi.FunctionInfo)) {
+	numInfos := repo.NumInfo(namespace)
+	for i := 0; i < numInfos; i++ {
+		bi := repo.Info(namespace, i)
+		switch bi.Type() {
+		case gi.INFO_TYPE_FUNCTION:
+			fi := gi.ToFunctionInfo(bi)
+			fn(fi)
+		case gi.INFO_TYPE_STRUCT:
+			si := gi.ToStructInfo(bi)
+			numMethods := si.NumMethod()
+			for i := 0; i < numMethods; i++ {
+				fi := si.Method(i)
+				fn(fi)
+				fi.Unref()
+			}
+		case gi.INFO_TYPE_UNION:
+			ui := gi.ToUnionInfo(bi)
+			numMethods := ui.NumMethod()
+			for i := 0; i < numMethods; i++ {
+				fi := ui.Method(i)
+				fn(fi)
+				fi.Unref()
+			}
+		case gi.INFO_TYPE_OBJECT:
+			oi := gi.ToObjectInfo(bi)
+			numMethods := oi.NumMethod()
+			for i := 0; i < numMethods; i++ {
+				fi := oi.Method(i)
+				fn(fi)
+				fi.Unref()
+			}
+		case gi.INFO_TYPE_INTERFACE:
+			ii := gi.ToInterfaceInfo(bi)
+			numMethods := ii.NumMethod()
+			for i := 0; i < numMethods; i++ {
+				fi := ii.Method(i)
+				fn(fi)
+				fi.Unref()
+			}
 		}
-	case gi.INFO_TYPE_UNION:
-		ui := gi.ToUnionInfo(bi)
-		numMethods := ui.NumMethod()
-		for i := 0; i < numMethods; i++ {
-			fi := ui.Method(i)
-			_handleFuncNameClash(fi)
-		}
-	case gi.INFO_TYPE_OBJECT:
-		oi := gi.ToObjectInfo(bi)
-		numMethods := oi.NumMethod()
-		for i := 0; i < numMethods; i++ {
-			fi := oi.Method(i)
-			_handleFuncNameClash(fi)
-		}
-	case gi.INFO_TYPE_INTERFACE:
-		ii := gi.ToInterfaceInfo(bi)
-		numMethods := ii.NumMethod()
-		for i := 0; i < numMethods; i++ {
-			fi := ii.Method(i)
-			_handleFuncNameClash(fi)
-		}
+		bi.Unref()
 	}
 }
 
-func _handleFuncNameClash(fi *gi.FunctionInfo) {
+func handleFuncNameClash(fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
 	fn := getFunctionName(fi)
 

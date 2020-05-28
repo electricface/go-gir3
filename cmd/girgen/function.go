@@ -23,7 +23,7 @@ func getFunctionName(fi *gi.FunctionInfo) string {
 	return fnName
 }
 
-func getFunctionName2(fi *gi.FunctionInfo) string {
+func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 	// 只用于 pFunction() 中
 	symbol := fi.Symbol()
 	name := globalSymbolNameMap[symbol]
@@ -41,7 +41,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	globalFuncNextIdx++
 
 	fiName := fi.Name()
-	fnName := getFunctionName2(fi)
+	fnName := getFunctionNameFinal(fi)
 
 	// 函数内变量名称分配器
 	var varReg VarReg
