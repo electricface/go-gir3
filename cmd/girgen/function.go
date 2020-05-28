@@ -266,9 +266,13 @@ type parseRetTypeResult struct {
 }
 
 func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeResult {
-	expr := ""
-	type0 := ""
+	debugMsg := ""
+	isPtr := ti.IsPointer()
 	tag := ti.Tag()
+	debugMsg = fmt.Sprintf("isPtr: %v, tag: %v", isPtr, tag)
+	type0 := fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+	expr := varRet + ".Int()/*TODO*/"
+
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		// 字符串类型
@@ -290,22 +294,15 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 		type0 = getTypeWithTag(tag)
 
 	case gi.TYPE_TAG_INTERFACE:
-		if ti.IsPointer() {
+		if isPtr {
 			bi := ti.Interface()
+			type0 = bi.Name()
 			// TODO 处理 struct 和 object，interface 有点不一样，struct 可以用 Type{}, 但是 object,interface 不行。
 			expr = fmt.Sprintf("%s{%s.Pointer()}", bi.Name(), varRet)
-			type0 = bi.Name()
 
-		} else {
-			// 不是 pointer 的 interface 太奇怪了
-			expr = varRet + ".Int()/*TODO*/"
-			type0 = "int/*TODO_TYPE*/"
+			bi.Unref()
 		}
-
-	default:
-		// 未知类型
-		expr = varRet + ".Int()/*TODO*/"
-		type0 = "int/*TODO_TYPE*/"
+		// else 不是 pointer 的 interface 太奇怪了
 	}
 
 	return &parseRetTypeResult{
@@ -359,13 +356,6 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 
 func parseArgTypeDirInOut() {
 	// TODO
-}
-
-type parseArgTypeDirInResult struct {
-	newArgExpr     string   // 创建 Argument 的表达式，比如 gi.NewIntArgument()
-	type0          string   // 目标函数形参中的类型
-	beforeArgLines []string // 在 arg_xxx = gi.NewXXXArgument 之前执行的语句
-	afterCallLines []string // 在 invoker.Call() 之后执行的语句
 }
 
 func getTypeWithTag(tag gi.TypeTag) (type0 string) {
@@ -433,14 +423,26 @@ func getArgumentType(tag gi.TypeTag) (str string) {
 	return
 }
 
+type parseArgTypeDirInResult struct {
+	newArgExpr     string   // 创建 Argument 的表达式，比如 gi.NewIntArgument()
+	type0          string   // 目标函数形参中的类型
+	beforeArgLines []string // 在 arg_xxx = gi.NewXXXArgument 之前执行的语句
+	afterCallLines []string // 在 invoker.Call() 之后执行的语句
+}
+
 func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirInResult {
-	// 目前只考虑 direction 为 in 的情况
-	var newArgExpr string
+	// 处理 direction 为 in 的情况
 	var beforeArgLines []string
 	var afterCallLines []string
-	var type0 string
 
 	tag := ti.Tag()
+	isPtr := ti.IsPointer()
+
+	debugMsg := ""
+	debugMsg = fmt.Sprintf("isPtr: %v, tag: %v", isPtr, tag)
+	type0 := fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+	newArgExpr := fmt.Sprintf("gi.NewIntArgument(%s)/*TODO*/", varArg)
+
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		// 字符串类型
@@ -470,10 +472,20 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		newArgExpr = fmt.Sprintf("gi.New%sArgument(%s)", argType, varArg)
 		type0 = getTypeWithTag(tag)
 
-	default:
-		// 未知类型
-		type0 = "int/*TODO:TYPE*/"
-		newArgExpr = fmt.Sprintf("gi.NewIntArgument(%s)/*TODO*/", varArg)
+	case gi.TYPE_TAG_VOID:
+		if isPtr {
+			// ti 指的类型就是 void* , 翻译为 unsafe.Pointer
+			type0 = "unsafe.Pointer"
+			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s)", varArg)
+		}
+
+	case gi.TYPE_TAG_INTERFACE:
+		if isPtr {
+			bi := ti.Interface()
+			type0 = bi.Name()
+			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
+			bi.Unref()
+		}
 	}
 
 	return &parseArgTypeDirInResult{

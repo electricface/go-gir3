@@ -65,42 +65,41 @@ func main() {
 			pStruct(sourceFile, si)
 
 		case gi.INFO_TYPE_BOXED:
+			// TODO 什么是 BOXED?
 		case gi.INFO_TYPE_ENUM:
 			log.Println(name, "ENUM")
 			ei := gi.ToEnumInfo(bi)
 			pEnum(sourceFile, ei, true)
+
 		case gi.INFO_TYPE_FLAGS:
 			log.Println(name, "FLAGS")
 			ei := gi.ToEnumInfo(bi)
 			pEnum(sourceFile, ei, false)
+
 		case gi.INFO_TYPE_OBJECT:
 			log.Println(name, "OBJECT")
 			oi := gi.ToObjectInfo(bi)
-			num := oi.NumMethod()
-			for j := 0; j < num; j++ {
-				//fi := oi.Method(j)
-				//checkFi(fi)
-			}
+			pObject(sourceFile, oi)
+
 		case gi.INFO_TYPE_INTERFACE:
 			log.Println(name, "INTERFACE")
-			info := gi.ToInterfaceInfo(bi)
-			num := info.NumMethod()
-			for j := 0; j < num; j++ {
-				//fi := info.Method(j)
-				//checkFi(fi)
-			}
+			ii := gi.ToInterfaceInfo(bi)
+			pInterface(sourceFile, ii)
 
 		case gi.INFO_TYPE_CONSTANT:
+			// TODO 常量
 		case gi.INFO_TYPE_UNION:
 			log.Println(name, "UNION")
+			ui := gi.ToUnionInfo(bi)
+			pUnion(sourceFile, ui)
 
-		case gi.INFO_TYPE_VALUE:
-		case gi.INFO_TYPE_SIGNAL:
-		case gi.INFO_TYPE_VFUNC:
-		case gi.INFO_TYPE_PROPERTY:
-		case gi.INFO_TYPE_FIELD:
-		case gi.INFO_TYPE_ARG:
-		case gi.INFO_TYPE_TYPE:
+			//case gi.INFO_TYPE_VALUE:
+			//case gi.INFO_TYPE_SIGNAL:
+			//case gi.INFO_TYPE_VFUNC:
+			//case gi.INFO_TYPE_PROPERTY:
+			//case gi.INFO_TYPE_FIELD:
+			//case gi.INFO_TYPE_ARG:
+			//case gi.INFO_TYPE_TYPE:
 		}
 		bi.Unref()
 	}
@@ -140,8 +139,12 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 
 func pStruct(s *SourceFile, si *gi.StructInfo) {
 	name := si.Name()
-	s.GoBody.Pn("// Struct %s", name)
 
+	if si.IsGTypeStruct() {
+		return
+	}
+
+	s.GoBody.Pn("// Struct %s", name)
 	s.GoBody.Pn("type %s struct {", name)
 	s.GoBody.Pn("    P unsafe.Pointer")
 	s.GoBody.Pn("}")
@@ -149,6 +152,48 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 	numMethod := si.NumMethod()
 	for i := 0; i < numMethod; i++ {
 		fi := si.Method(i)
+		pFunction(s, fi)
+	}
+}
+
+func pUnion(s *SourceFile, ui *gi.UnionInfo) {
+	name := ui.Name()
+	s.GoBody.Pn("// Union %s", name)
+	s.GoBody.Pn("type %s struct {", name)
+	s.GoBody.Pn("    P unsafe.Pointer")
+	s.GoBody.Pn("}")
+
+	numMethod := ui.NumMethod()
+	for i := 0; i < numMethod; i++ {
+		fi := ui.Method(i)
+		pFunction(s, fi)
+	}
+}
+
+func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
+	name := ii.Name()
+	s.GoBody.Pn("// Interface %s", name)
+	s.GoBody.Pn("type %s struct {", name)
+	s.GoBody.Pn("    P unsafe.Pointer")
+	s.GoBody.Pn("}")
+
+	numMethod := ii.NumMethod()
+	for i := 0; i < numMethod; i++ {
+		fi := ii.Method(i)
+		pFunction(s, fi)
+	}
+}
+
+func pObject(s *SourceFile, oi *gi.ObjectInfo) {
+	name := oi.Name()
+	s.GoBody.Pn("// Object %s", name)
+	s.GoBody.Pn("type %s struct {", name)
+	s.GoBody.Pn("    P unsafe.Pointer")
+	s.GoBody.Pn("}")
+
+	numMethod := oi.NumMethod()
+	for i := 0; i < numMethod; i++ {
+		fi := oi.Method(i)
 		pFunction(s, fi)
 	}
 }
