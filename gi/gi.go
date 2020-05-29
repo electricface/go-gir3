@@ -368,6 +368,14 @@ func (r *Repository) Dependencies(namespace string) []string {
 	return _GStringArrayToGoStringSlice(arr)
 }
 
+// g_irepository_get_immediate_dependencies
+func (r *Repository) ImmediateDependencies(namespace string) []string {
+	gnamespace := _GoStringToGString(namespace)
+	arr := C.g_irepository_get_immediate_dependencies(r.c, gnamespace)
+	C.free_gstring(gnamespace)
+	return _GStringArrayToGoStringSlice(arr)
+}
+
 // g_irepository_get_loaded_namespaces
 func (r *Repository) LoadedNamespaces() []string {
 	arr := C.g_irepository_get_loaded_namespaces(r.c)

@@ -535,10 +535,8 @@ func getTypeName(bi *gi.BaseInfo) string {
 		return bi.Name()
 	}
 
-	repo := gi.DefaultRepository()
-	deps := repo.Dependencies(optNamespace)
 	pkgBase := ""
-	for _, dep := range deps {
+	for _, dep := range globalDeps {
 		if strings.HasPrefix(dep, ns+"-") {
 			pkgBase = strings.ToLower(dep)
 			break
@@ -550,4 +548,41 @@ func getTypeName(bi *gi.BaseInfo) string {
 		typeName += fmt.Sprintf("/*gir:%s*/", pkgBase)
 	}
 	return typeName
+}
+
+func getAllDeps(repo *gi.Repository, namespace string) []string {
+	if namespace == "" {
+		namespace = optNamespace
+	}
+	if strings.Contains(namespace, "-") {
+		nameVer := strings.SplitN(namespace, "-", 2)
+		namespace = nameVer[0]
+		version := nameVer[1]
+		_, err := repo.Require(namespace, version, gi.REPOSITORY_LOAD_FLAG_LAZY)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	deps := repo.ImmediateDependencies(namespace)
+	log.Printf("ns %s, deps %v\n", namespace, deps)
+	if len(deps) == 0 {
+		return nil
+	}
+
+	resultMap := make(map[string]struct{})
+	for _, dep := range deps {
+		resultMap[dep] = struct{}{}
+	}
+	for _, dep := range deps {
+		deps0 := getAllDeps(repo, dep)
+		for _, dep0 := range deps0 {
+			resultMap[dep0] = struct{}{}
+		}
+	}
+	keys := make([]string, 0, len(resultMap))
+	for key := range resultMap {
+		keys = append(keys, key)
+	}
+	return keys
 }

@@ -23,6 +23,7 @@ func init() {
 
 var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
 var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
+var globalDeps []string
 
 func main() {
 	flag.Parse()
@@ -32,6 +33,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	deps := getAllDeps(repo, optNamespace)
+	log.Printf("deps: %#v\n", deps)
+	globalDeps = deps
+
+	//loadedNs := repo.LoadedNamespaces()
+	//log.Println("loadedNs:", loadedNs)
 
 	pkg := optPkg
 	sourceFile := NewSourceFile(pkg)
