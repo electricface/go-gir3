@@ -90,15 +90,26 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			s.GoBody.Pn("// is method")
 			addReceiver = true
 		} else {
-			// 还是表示 C 函数是方法，只不过没有处理好参数，fi.Arg 还可以去到 receiver 参数。
+			// 可能 C 函数还是可以作为方法的，只不过没有处理好参数，如果第一个参数是指针类型，就大概率是方法。
 			if fi.NumArg() > 0 {
 				s.GoBody.Pn("// is method")
 				arg0 := fi.Arg(0)
 				arg0Type := arg0.Type()
-				if arg0Type.IsPointer() {
-					addReceiver = true
-					// 从 1 开始
-					argIdxStart = 1
+				s.GoBody.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
+				if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
+					ii := arg0Type.Interface()
+					if ii.Name() == container.Name() {
+						addReceiver = true
+						// 从 1 开始
+						argIdxStart = 1
+					}
+					ii.Unref()
+				}
+
+				if !addReceiver {
+					// 不能作为方法, 作为函数
+					fnName = container.Name() + fnName + "1"
+					// TODO: 适当消除 1 后缀
 				}
 			} else {
 				s.GoBody.Pn("// num arg is 0")

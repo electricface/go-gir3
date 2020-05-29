@@ -24,12 +24,21 @@ func init() {
 var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
 var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
 var globalDeps []string
+var globalCfg *config
 
 func main() {
 	flag.Parse()
 
+	configFile := filepath.Join(optDir, "config.json")
+	var cfg config
+	err := loadConfig(configFile, &cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	globalCfg = &cfg
+
 	repo := gi.DefaultRepository()
-	_, err := repo.Require(optNamespace, optVersion, gi.REPOSITORY_LOAD_FLAG_LAZY)
+	_, err = repo.Require(optNamespace, optVersion, gi.REPOSITORY_LOAD_FLAG_LAZY)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,9 +88,10 @@ func main() {
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
 			log.Println(name, "FUNCTION")
-			fi := gi.ToFunctionInfo(bi)
-			pFunction(sourceFile, fi)
-
+			if !strSliceContains(globalCfg.Black, name) {
+				fi := gi.ToFunctionInfo(bi)
+				pFunction(sourceFile, fi)
+			}
 		case gi.INFO_TYPE_CALLBACK:
 		case gi.INFO_TYPE_STRUCT:
 			log.Println(name, "STRUCT")
