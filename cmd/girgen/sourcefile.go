@@ -37,18 +37,18 @@ func NewSourceFile(pkg string) *SourceFile {
 	return sf
 }
 
-func (v *SourceFile) Print() {
-	v.WriteTo(os.Stdout)
+func (s *SourceFile) Print() {
+	s.WriteTo(os.Stdout)
 }
 
-func (v *SourceFile) Save(filename string) {
+func (s *SourceFile) Save(filename string) {
 	f, err := os.Create(filename)
 	if err != nil {
 		log.Fatal("fail to create file:", err)
 	}
 	defer f.Close()
 
-	v.WriteTo(f)
+	s.WriteTo(f)
 
 	err = f.Sync()
 	if err != nil {
@@ -61,38 +61,38 @@ func (v *SourceFile) Save(filename string) {
 	}
 }
 
-func (v *SourceFile) WriteTo(w io.Writer) {
-	io.WriteString(w, "package "+v.Pkg+"\n")
+func (s *SourceFile) WriteTo(w io.Writer) {
+	io.WriteString(w, "package "+s.Pkg+"\n")
 
-	if len(v.CPkgs) > 0 ||
-		len(v.CIncludes) > 0 ||
-		len(v.CHeader.buf.Bytes()) > 0 ||
-		len(v.CBody.buf.Bytes()) > 0 {
+	if len(s.CPkgs) > 0 ||
+		len(s.CIncludes) > 0 ||
+		len(s.CHeader.buf.Bytes()) > 0 ||
+		len(s.CBody.buf.Bytes()) > 0 {
 
 		io.WriteString(w, "/*\n")
-		if len(v.CPkgs) != 0 {
-			str := "#cgo pkg-config: " + strings.Join(v.CPkgs, " ") + "\n"
+		if len(s.CPkgs) != 0 {
+			str := "#cgo pkg-config: " + strings.Join(s.CPkgs, " ") + "\n"
 			io.WriteString(w, str)
 		}
 
-		sort.Strings(v.CIncludes)
-		for _, inc := range v.CIncludes {
+		sort.Strings(s.CIncludes)
+		for _, inc := range s.CIncludes {
 			io.WriteString(w, "#include "+inc+"\n")
 		}
 
-		w.Write(v.CHeader.buf.Bytes())
-		w.Write(v.CBody.buf.Bytes())
+		w.Write(s.CHeader.buf.Bytes())
+		w.Write(s.CBody.buf.Bytes())
 
 		io.WriteString(w, "*/\n")
 		io.WriteString(w, "import \"C\"\n")
 	}
 
-	sort.Strings(v.GoImports)
-	for _, imp := range v.GoImports {
+	sort.Strings(s.GoImports)
+	for _, imp := range s.GoImports {
 		io.WriteString(w, "import "+imp+"\n")
 	}
 
-	w.Write(v.GoBody.buf.Bytes())
+	w.Write(s.GoBody.buf.Bytes())
 }
 
 func (s *SourceFile) AddCPkg(pkg string) {
@@ -128,7 +128,7 @@ func (s *SourceFile) AddGoImport(imp string) {
 }
 
 func (s *SourceFile) AddGirImport(name string) {
-	fullPath := "github.com/electricface/go-gir/" + name
+	fullPath := girPkgPath + "/" + name
 	s.AddGoImport(fullPath)
 }
 

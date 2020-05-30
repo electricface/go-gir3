@@ -1,23 +1,25 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/electricface/go-gir3/gi"
 )
 
+const girPkgPath = "github.com/electricface/go-gir"
+
 var optNamespace string
 var optVersion string
-var optPkg string
 var optDir string
 
 func init() {
 	flag.StringVar(&optNamespace, "n", "", "namespace")
 	flag.StringVar(&optVersion, "v", "", "version")
-	flag.StringVar(&optPkg, "p", "", "pkg")
 	flag.StringVar(&optDir, "d", "", "output directory")
 }
 
@@ -28,6 +30,14 @@ var globalCfg *config
 
 func main() {
 	flag.Parse()
+	if optDir == "" {
+		gopath := os.Getenv("GOPATH")
+		if gopath == "" {
+			log.Fatal(errors.New("do not set env var GOPATH"))
+		}
+		optDir = filepath.Join(gopath, "src", girPkgPath,
+			strings.ToLower(optNamespace+"-"+optVersion))
+	}
 
 	configFile := filepath.Join(optDir, "config.json")
 	var cfg config
@@ -50,7 +60,7 @@ func main() {
 	//loadedNs := repo.LoadedNamespaces()
 	//log.Println("loadedNs:", loadedNs)
 
-	pkg := optPkg
+	pkg := strings.ToLower(optNamespace)
 	sourceFile := NewSourceFile(pkg)
 
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
@@ -138,7 +148,11 @@ func main() {
 		bi.Unref()
 	}
 
-	outFile := filepath.Join(optDir, optPkg+"_auto.go")
+	err = os.MkdirAll(optDir, 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+	outFile := filepath.Join(optDir, pkg+"_auto.go")
 	sourceFile.Save(outFile)
 }
 
