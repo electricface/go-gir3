@@ -209,7 +209,23 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 	name := si.Name()
 
 	if si.IsGTypeStruct() {
+		// 过滤掉对象的 Class 结构，比如 Object 的 ObjectClass
+		s.GoBody.Pn("// ignore GType struct %s", name)
 		return
+	}
+
+	// 过滤掉 Class 结尾的，并且还存在去掉 Class 后缀后还存在的类型的结构。
+	// 目前它只过滤掉了 gobject 的 TypePluginClass 结构， 而 TypePlugin 是接口。
+	if strings.HasSuffix(name, "Class") {
+		repo := gi.DefaultRepository()
+		nameRmClass := strings.TrimSuffix(name, "Class")
+		bi := repo.FindByName(optNamespace, nameRmClass)
+		if !bi.IsNil() {
+			s.GoBody.Pn("// ignore Class struct %s, type of %s is %s",
+				name, nameRmClass, bi.Type())
+			bi.Unref()
+			return
+		}
 	}
 
 	s.GoBody.Pn("// Struct %s", name)
