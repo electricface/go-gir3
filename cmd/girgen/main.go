@@ -297,6 +297,13 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 
 	s.GoBody.Pn("}") // end struct
 
+	if parent != nil {
+		// 只有有 parent 的 object 才提供 WrapXXX 方法
+		s.GoBody.P("func Wrap%s(p unsafe.Pointer) (r %s) {", name, name)
+		s.GoBody.P("r.P = p;")
+		s.GoBody.Pn("return }")
+	}
+
 	numMethod := oi.NumMethod()
 	for i := 0; i < numMethod; i++ {
 		fi := oi.Method(i)
