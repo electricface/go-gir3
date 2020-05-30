@@ -242,8 +242,11 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 	name := ii.Name()
 	s.GoBody.Pn("// Interface %s", name)
 	s.GoBody.Pn("type %s struct {", name)
+	s.GoBody.Pn("    %sIfc", name)
 	s.GoBody.Pn("    P unsafe.Pointer")
-	s.GoBody.Pn("}")
+	s.GoBody.Pn("}") // end struct
+
+	s.GoBody.Pn("type %sIfc struct{}", name)
 
 	numMethod := ii.NumMethod()
 	for i := 0; i < numMethod; i++ {
@@ -256,8 +259,36 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	name := oi.Name()
 	s.GoBody.Pn("// Object %s", name)
 	s.GoBody.Pn("type %s struct {", name)
-	s.GoBody.Pn("    P unsafe.Pointer")
-	s.GoBody.Pn("}")
+
+	// object 有的接口
+	numIfcs := oi.NumInterface()
+	for i := 0; i < numIfcs; i++ {
+		ii := oi.Interface(i)
+		ns := ii.Namespace()
+		if isSameNamespace(ns) {
+			s.GoBody.Pn("%sIfc", ii.Name())
+		} else {
+			s.GoBody.Pn("%s.%sIfc", strings.ToLower(ns), ii.Name())
+		}
+		ii.Unref()
+	}
+
+	// object 继承关系
+	parent := oi.Parent()
+	if parent != nil {
+		ns := parent.Namespace()
+		if isSameNamespace(ns) {
+			s.GoBody.Pn("%s", parent.Name())
+		} else {
+			s.GoBody.Pn("%s.%s", strings.ToLower(ns), parent.Name())
+		}
+		parent.Unref()
+
+	} else {
+		s.GoBody.Pn("    P unsafe.Pointer")
+	}
+
+	s.GoBody.Pn("}") // end struct
 
 	numMethod := oi.NumMethod()
 	for i := 0; i < numMethod; i++ {

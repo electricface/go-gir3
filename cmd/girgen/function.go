@@ -129,10 +129,26 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		}
 
 		if addReceiver {
+			// 容器是 interface 类型的
+			isContainerIfc := false
+			if container.Type() == gi.INFO_TYPE_INTERFACE {
+				isContainerIfc = true
+			}
+
+			receiverType := container.Name()
+			if isContainerIfc {
+				receiverType = "*" + receiverType + "Ifc"
+			}
+
 			varV := varReg.alloc("v")
-			receiver = fmt.Sprintf("(%s %s)", varV, fi.Container().Name())
+			receiver = fmt.Sprintf("(%s %s)", varV, receiverType)
 			varArgV := varReg.alloc("arg_v")
-			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%v.P)", varArgV, varV))
+			getPtrExpr := fmt.Sprintf("%s.P", varV)
+			if isContainerIfc {
+				getPtrExpr = fmt.Sprintf("*(*unsafe.Pointer)(unsafe.Pointer(%v))", varV)
+			}
+			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%s)",
+				varArgV, getPtrExpr))
 			argNames = append(argNames, varArgV)
 		}
 	} else {
