@@ -264,28 +264,19 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	numIfcs := oi.NumInterface()
 	for i := 0; i < numIfcs; i++ {
 		ii := oi.Interface(i)
-		ns := ii.Namespace()
-		if isSameNamespace(ns) {
-			s.GoBody.Pn("%sIfc", ii.Name())
-		} else {
-			s.GoBody.Pn("%s.%sIfc", strings.ToLower(ns), ii.Name())
-		}
+		typeName := getTypeName(gi.ToBaseInfo(ii))
+		s.GoBody.Pn("%sIfc", typeName)
 		ii.Unref()
 	}
 
 	// object 继承关系
 	parent := oi.Parent()
 	if parent != nil {
-		ns := parent.Namespace()
-		if isSameNamespace(ns) {
-			s.GoBody.Pn("%s", parent.Name())
-		} else {
-			s.GoBody.Pn("%s.%s", strings.ToLower(ns), parent.Name())
-		}
+		parentTypeName := getTypeName(gi.ToBaseInfo(parent))
+		s.GoBody.Pn("%s", parentTypeName)
 		parent.Unref()
-
 	} else {
-		s.GoBody.Pn("    P unsafe.Pointer")
+		s.GoBody.Pn("P unsafe.Pointer")
 	}
 
 	s.GoBody.Pn("}") // end struct
