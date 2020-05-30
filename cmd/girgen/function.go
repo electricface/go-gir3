@@ -35,12 +35,22 @@ func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
-	log.Println("function", symbol)
+	fiName := fi.Name()
+	// 用于黑名单识别函数的名字
+	identifyName := fiName
+	container := fi.Container()
+	if container != nil {
+		identifyName = container.Name() + "." + fiName
+	}
+	if strSliceContains(globalCfg.Black, identifyName) {
+		s.GoBody.Pn("\n// black function %s\n", identifyName)
+		return
+	}
+
 	s.GoBody.Pn("// %s", symbol)
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
 
-	fiName := fi.Name()
 	fnName := getFunctionNameFinal(fi)
 
 	// 函数内变量名称分配器
@@ -77,7 +87,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 
 	argIdxStart := 0
-	container := fi.Container()
 	if container != nil {
 		addReceiver := false
 		log.Println("container is not nil")

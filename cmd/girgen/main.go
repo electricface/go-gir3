@@ -101,10 +101,8 @@ func main() {
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
 			log.Println(name, "FUNCTION")
-			if !strSliceContains(globalCfg.Black, name) {
-				fi := gi.ToFunctionInfo(bi)
-				pFunction(sourceFile, fi)
-			}
+			fi := gi.ToFunctionInfo(bi)
+			pFunction(sourceFile, fi)
 		case gi.INFO_TYPE_CALLBACK:
 		case gi.INFO_TYPE_STRUCT:
 			log.Println(name, "STRUCT")
@@ -136,7 +134,6 @@ func main() {
 		case gi.INFO_TYPE_CONSTANT:
 			ci := gi.ToConstantInfo(bi)
 			constants = pConstant(constants, ci)
-			// TODO 常量
 		case gi.INFO_TYPE_UNION:
 			log.Println(name, "UNION")
 			ui := gi.ToUnionInfo(bi)
