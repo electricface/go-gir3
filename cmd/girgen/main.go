@@ -3,9 +3,11 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/electricface/go-gir3/gi"
@@ -91,6 +93,7 @@ func main() {
 
 	// 处理函数命名冲突
 	forEachFunctionInfo(repo, optNamespace, handleFuncNameClash)
+	var constants []string
 
 	for i := 0; i < numInfos; i++ {
 		bi := repo.Info(optNamespace, i)
@@ -131,6 +134,8 @@ func main() {
 			pInterface(sourceFile, ii)
 
 		case gi.INFO_TYPE_CONSTANT:
+			ci := gi.ToConstantInfo(bi)
+			constants = pConstant(constants, ci)
 			// TODO 常量
 		case gi.INFO_TYPE_UNION:
 			log.Println(name, "UNION")
@@ -148,12 +153,30 @@ func main() {
 		bi.Unref()
 	}
 
+	// print constants
+	sourceFile.GoBody.Pn("// constants\nconst (")
+	for i := 0; i+1 < len(constants); i += 2 {
+		sourceFile.GoBody.Pn("%s = %s", constants[i], constants[i+1])
+	}
+	sourceFile.GoBody.Pn(")")
+
 	err = os.MkdirAll(optDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
 	outFile := filepath.Join(optDir, pkg+"_auto.go")
 	sourceFile.Save(outFile)
+}
+
+func pConstant(constants []string, ci *gi.ConstantInfo) []string {
+	val := ci.Value()
+	valStr, ok := val.(string)
+	if ok {
+		constants = append(constants, ci.Name(), strconv.Quote(valStr))
+	} else {
+		constants = append(constants, ci.Name(), fmt.Sprintf("%v", val))
+	}
+	return constants
 }
 
 func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
