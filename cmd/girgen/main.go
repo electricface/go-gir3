@@ -208,11 +208,7 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 		value := enum.Value(i)
 		val := value.Value()
 		memberName := name + snake2Camel(value.Name())
-		if i == 0 {
-			s.GoBody.Pn("%s %s = %v", memberName, type0, val)
-		} else {
-			s.GoBody.Pn("%s = %v", memberName, val)
-		}
+		s.GoBody.Pn("%s %s = %v", memberName, type0, val)
 		value.Unref()
 	}
 	s.GoBody.Pn(")") // end const
