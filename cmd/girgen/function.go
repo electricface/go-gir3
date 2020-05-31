@@ -445,9 +445,17 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 		bi := ti.Interface()
 		biType := bi.Type()
 		if isPtr {
-			type0 = getTypeName(bi)
-			expr = "Pointer()"
-			field = ".P"
+			if biType == gi.INFO_TYPE_OBJECT || biType == gi.INFO_TYPE_INTERFACE ||
+				biType == gi.INFO_TYPE_STRUCT {
+
+				type0 = getTypeName(bi)
+				expr = "Pointer()"
+				field = ".P"
+			} else {
+				debugMsg := fmt.Sprintf("tagIfc biType: %v", biType)
+				expr = fmt.Sprintf("Int()/*TODO %s*/", debugMsg)
+				// 目前这里只发现了在 pango_tab_array_get_tabs 中 biType 为 enum
+			}
 
 		} else {
 			if biType == gi.INFO_TYPE_FLAGS {
