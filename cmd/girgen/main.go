@@ -29,6 +29,7 @@ var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类�
 var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
 var globalDeps []string
 var globalCfg *config
+var globalSourceFile *SourceFile
 
 func main() {
 	flag.Parse()
@@ -64,6 +65,7 @@ func main() {
 
 	pkg := strings.ToLower(optNamespace)
 	sourceFile := NewSourceFile(pkg)
+	globalSourceFile = sourceFile
 
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
 	sourceFile.AddGoImport("unsafe")
@@ -176,17 +178,28 @@ func pConstant(constants []string, ci *gi.ConstantInfo) []string {
 	return constants
 }
 
+func getFlagsTypeName(type0 string) string {
+	// NOTE： 为了避免 flags 和函数重名了，比如 flags FileTest 和 file_test 函数, 就加上 Flags 后缀。
+	if strings.HasSuffix(type0, "Flags") {
+		return type0
+	}
+	return type0 + "Flags"
+}
+
+func getEnumTypeName(type0 string) string {
+	return type0 + "Enum"
+}
+
 func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 	name := enum.Name()
 	type0 := name
 	if isEnum {
-		type0 += "Enum"
+		s.GoBody.Pn("// Enum %v", name)
+		type0 = getEnumTypeName(type0)
 	} else {
 		// is Flags
-		if !strings.HasSuffix(type0, "Flags") {
-			type0 += "Flags"
-		}
-		// NOTE： 为了避免 enum 和函数重名了，比如 enum FileTest 和 file_test 函数, 就加上 Flags 后缀。
+		s.GoBody.Pn("// Flags %v", name)
+		type0 = getFlagsTypeName(type0)
 	}
 	s.GoBody.Pn("type %s int", type0)
 	s.GoBody.Pn("const (")

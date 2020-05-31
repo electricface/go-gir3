@@ -838,6 +838,8 @@ const (
 	TYPE_TAG_UNICHAR   TypeTag = C.GI_TYPE_TAG_UNICHAR
 )
 
+// unichar 是 guint32, rune 是 go 中的，也是 32 位的。
+
 // g_type_tag_to_string
 func (tt TypeTag) String() string {
 	ret := C.g_type_tag_to_string(C.GITypeTag(tt))

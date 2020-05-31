@@ -200,7 +200,19 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			varArg := varReg.alloc("arg_" + paramName)
 			argNames = append(argNames, varArg)
 			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
-			afterCallLines = append(afterCallLines, fmt.Sprintf("%v = %v[%v].%v", paramName, varOutArgs, outArgIdx, parseResult.expr))
+			getValExpr := fmt.Sprintf("%v[%v].%v", varOutArgs, outArgIdx, parseResult.expr)
+
+			setParamLine := fmt.Sprintf("%v%v = %v",
+				paramName, parseResult.field, getValExpr)
+
+			if parseResult.needTypeCast {
+				setParamLine = fmt.Sprintf("%v%v = %v(%s)",
+					paramName, parseResult.field, type0, getValExpr)
+			}
+
+			// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
+			// 或 param1.P = outArgs[1].Pointer()
+			afterCallLines = append(afterCallLines, setParamLine)
 
 			outArgIdx++
 		}
@@ -354,16 +366,30 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 		expr = fmt.Sprintf("%s.%s()", varRet, getArgumentType(tag))
 		type0 = getTypeWithTag(tag)
 
+	case gi.TYPE_TAG_UNICHAR:
+		// 产生如下代码：
+		// result = rune(ret.Uint32())
+		expr = fmt.Sprintf("rune(%v.Uint32())", varRet)
+		type0 = "rune"
+
 	case gi.TYPE_TAG_INTERFACE:
+		bi := ti.Interface()
+		biType := bi.Type()
 		if isPtr {
-			bi := ti.Interface()
 			type0 = getTypeName(bi)
 			expr = fmt.Sprintf("%s.Pointer()", varRet)
 			field = ".P"
 
-			bi.Unref()
+		} else {
+			if biType == gi.INFO_TYPE_FLAGS {
+				type0 = getFlagsTypeName(getTypeName(bi))
+				expr = fmt.Sprintf("%v(%v.Int())", type0, varRet)
+			} else if biType == gi.INFO_TYPE_ENUM {
+				type0 = getEnumTypeName(getTypeName(bi))
+				expr = fmt.Sprintf("%v(%v.Int())", type0, varRet)
+			}
 		}
-		// else 不是 pointer 的 interface 太奇怪了
+		bi.Unref()
 	}
 
 	return &parseRetTypeResult{
@@ -374,13 +400,18 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 }
 
 type parseArgTypeDirOutResult struct {
-	expr  string // 转换 arguemnt 为返回值类型的表达式
-	type0 string // 目标函数中返回值类型
+	expr         string // 转换 arguemnt 为返回值类型的表达式
+	type0        string // 目标函数中返回值类型
+	needTypeCast bool   // 是否需要类型转换
+	field        string // 表达式赋值的字段
 }
 
 func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
 	expr := "Int()/*TODO*/"
 	type0 := "int/*TODO_TYPE*/"
+	needTypeCast := false
+	field := ""
+
 	tag := ti.Tag()
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -404,14 +435,39 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 		expr = fmt.Sprintf("%s()", getArgumentType(tag))
 		type0 = getTypeWithTag(tag)
 
-	case gi.TYPE_TAG_INTERFACE:
-		// TODO
+	case gi.TYPE_TAG_UNICHAR:
+		expr = "Uint32()"
+		type0 = "rune"
+		needTypeCast = true
 
+	case gi.TYPE_TAG_INTERFACE:
+		isPtr := ti.IsPointer()
+		bi := ti.Interface()
+		biType := bi.Type()
+		if isPtr {
+			type0 = getTypeName(bi)
+			expr = "Pointer()"
+			field = ".P"
+
+		} else {
+			if biType == gi.INFO_TYPE_FLAGS {
+				type0 = getFlagsTypeName(getTypeName(bi))
+				expr = "Int()"
+				needTypeCast = true
+			} else if biType == gi.INFO_TYPE_ENUM {
+				type0 = getEnumTypeName(getTypeName(bi))
+				expr = "Int()"
+				needTypeCast = true
+			}
+		}
+		bi.Unref()
 	}
 
 	return &parseArgTypeDirOutResult{
-		expr:  expr,
-		type0: type0,
+		expr:         expr,
+		type0:        type0,
+		needTypeCast: needTypeCast,
+		field:        field,
 	}
 }
 
@@ -447,6 +503,9 @@ func getTypeWithTag(tag gi.TypeTag) (type0 string) {
 		type0 = "float32"
 	case gi.TYPE_TAG_DOUBLE:
 		type0 = "float64"
+
+	case gi.TYPE_TAG_UNICHAR:
+		type0 = "rune"
 	}
 	return
 }
@@ -480,6 +539,8 @@ func getArgumentType(tag gi.TypeTag) (str string) {
 	case gi.TYPE_TAG_DOUBLE:
 		str = "Double"
 
+	case gi.TYPE_TAG_UNICHAR:
+		str = "Uint32"
 	}
 	return
 }
@@ -530,8 +591,12 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		// 简单类型
 
 		argType := getArgumentType(tag)
-		newArgExpr = fmt.Sprintf("gi.New%sArgument(%s)", argType, varArg)
+		newArgExpr = fmt.Sprintf("gi.New%vArgument(%v)", argType, varArg)
 		type0 = getTypeWithTag(tag)
+
+	case gi.TYPE_TAG_UNICHAR:
+		newArgExpr = fmt.Sprintf("gi.NewUint32Argument(uint32(%v))", varArg)
+		type0 = "rune"
 
 	case gi.TYPE_TAG_VOID:
 		if isPtr {
@@ -541,8 +606,9 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		}
 
 	case gi.TYPE_TAG_INTERFACE:
+		bi := ti.Interface()
+		biType := bi.Type()
 		if isPtr {
-			bi := ti.Interface()
 			type0 = getTypeName(bi)
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
 
@@ -557,8 +623,16 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P_%s())", varArg, bi.Name())
 			}
 
-			bi.Unref()
+		} else {
+			if biType == gi.INFO_TYPE_FLAGS {
+				type0 = getFlagsTypeName(getTypeName(bi))
+				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
+			} else if biType == gi.INFO_TYPE_ENUM {
+				type0 = getEnumTypeName(getTypeName(bi))
+				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
+			}
 		}
+		bi.Unref()
 	}
 
 	return &parseArgTypeDirInResult{
@@ -592,7 +666,7 @@ func getTypeName(bi *gi.BaseInfo) string {
 
 	typeName := strings.ToLower(ns) + "." + bi.Name()
 	if pkgBase != "" {
-		typeName += fmt.Sprintf("/*gir:%s*/", pkgBase)
+		globalSourceFile.AddGirImport(pkgBase)
 	}
 	return typeName
 }
