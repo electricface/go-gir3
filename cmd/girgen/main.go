@@ -304,6 +304,10 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 		s.GoBody.Pn("return }")
 	}
 
+	s.GoBody.P("type I%s interface {", name)
+	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
+	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
+
 	numMethod := oi.NumMethod()
 	for i := 0; i < numMethod; i++ {
 		fi := oi.Method(i)

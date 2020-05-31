@@ -544,8 +544,19 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		if isPtr {
 			bi := ti.Interface()
 			type0 = getTypeName(bi)
-
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
+
+			if bi.Type() == gi.INFO_TYPE_OBJECT {
+				if strings.Contains(type0, ".") {
+					// gobject.Object => gobject.IObject
+					type0 = strings.Replace(type0, ".", ".I", 1)
+				} else {
+					// Object => IObject
+					type0 = "I" + type0
+				}
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P_%s())", varArg, bi.Name())
+			}
+
 			bi.Unref()
 		}
 	}
