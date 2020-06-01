@@ -648,6 +648,23 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			}
 		}
 		bi.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		ai := ti.ArrayType()
+		if ai == gi.ARRAY_TYPE_C {
+			p0ti := ti.ParamType(0)
+			p0tag := p0ti.Tag()
+			debugMsg = fmt.Sprintf("array type c, p0tag: %s", p0tag)
+			type0 = fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+
+			arrElemType := getArgumentType(p0tag)
+			if arrElemType != "" && !p0ti.IsPointer() {
+				type0 = "gi." + getArgumentType(p0tag) + "Array"
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
+			}
+
+			p0ti.Unref()
+		}
 	}
 
 	return &parseArgTypeDirInResult{

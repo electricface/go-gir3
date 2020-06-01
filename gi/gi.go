@@ -1848,6 +1848,10 @@ func (ui *UnionInfo) Alignment() int {
 
 /* --util-- */
 
+func Malloc(n int) unsafe.Pointer {
+	return C.malloc(C.size_t(n))
+}
+
 func Free(pointer unsafe.Pointer) {
 	C.free(pointer)
 }
@@ -1860,4 +1864,47 @@ func CString(str string) unsafe.Pointer {
 func GoString(p unsafe.Pointer) string {
 	str := C.GoString((*C.char)(p))
 	return str
+}
+
+type DoubleArray struct {
+	P   unsafe.Pointer
+	Len int
+}
+
+func NewDoubleArray(fs ...float64) DoubleArray {
+	size := int(unsafe.Sizeof(float64(0))) * len(fs)
+	p := Malloc(size)
+	arr := DoubleArray{
+		P:   p,
+		Len: len(fs),
+	}
+	slice := arr.AsSlice()
+	copy(slice, fs)
+	return arr
+}
+
+func (arr *DoubleArray) Free() {
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr *DoubleArray) AsSlice() []float64 {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	slice := (*(*[1 << 31]float64)(arr.P))[:arr.Len:arr.Len]
+	return slice
+}
+
+func (arr *DoubleArray) Copy() []float64 {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+	result := make([]float64, arr.Len)
+	slice := (*(*[1 << 32]float64)(arr.P))[:arr.Len:arr.Len]
+	copy(result, slice)
+	return result
 }
