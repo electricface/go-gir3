@@ -11,6 +11,8 @@ import (
 // 给 InvokeCache.Get() 用的 index 的
 var globalFuncNextIdx int
 
+var globalNumTodoFunc int
+
 func getFunctionName(fi *gi.FunctionInfo) string {
 	fiName := fi.Name()
 	fnName := snake2Camel(fiName)
@@ -34,6 +36,7 @@ func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 }
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
+	b := &SourceBlock{}
 	symbol := fi.Symbol()
 	fiName := fi.Name()
 	// 用于黑名单识别函数的名字
@@ -43,11 +46,11 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		identifyName = container.Name() + "." + fiName
 	}
 	if strSliceContains(globalCfg.Black, identifyName) {
-		s.GoBody.Pn("\n// black function %s\n", identifyName)
+		b.Pn("\n// black function %s\n", identifyName)
 		return
 	}
 
-	s.GoBody.Pn("// %s", symbol)
+	b.Pn("// %s", symbol)
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
 
@@ -90,21 +93,21 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	if container != nil {
 		addReceiver := false
 		log.Println("container is not nil")
-		s.GoBody.Pn("// container is not nil, container is %s", container.Name())
+		b.Pn("// container is not nil, container is %s", container.Name())
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 			// 表示 C 函数是构造器
-			s.GoBody.Pn("// is constructor")
+			b.Pn("// is constructor")
 		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
 			// 表示 C 函数是方法
-			s.GoBody.Pn("// is method")
+			b.Pn("// is method")
 			addReceiver = true
 		} else {
 			// 可能 C 函数还是可以作为方法的，只不过没有处理好参数，如果第一个参数是指针类型，就大概率是方法。
 			if fi.NumArg() > 0 {
-				s.GoBody.Pn("// is method")
+				b.Pn("// is method")
 				arg0 := fi.Arg(0)
 				arg0Type := arg0.Type()
-				s.GoBody.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
+				b.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
 				if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
 					ii := arg0Type.Interface()
 					if ii.Name() == container.Name() {
@@ -121,7 +124,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 					// TODO: 适当消除 1 后缀
 				}
 			} else {
-				s.GoBody.Pn("// num arg is 0")
+				b.Pn("// num arg is 0")
 				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
 				// 但是 Go 里没有类的概念，于是直接忽略这个方法了，但任然会为在 namespace 顶层的 io_channel_error_quark 方法自动生成代码。
 				return
@@ -152,7 +155,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			argNames = append(argNames, varArgV)
 		}
 	} else {
-		s.GoBody.Pn("// container is nil")
+		b.Pn("// container is nil")
 	}
 
 	numArg := fi.NumArg()
@@ -259,47 +262,47 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		retParamsJoined = "(" + retParamsJoined + ")"
 	}
 	// 输出目标函数头部
-	s.GoBody.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
+	b.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
 	if container == nil {
-		s.GoBody.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
+		b.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
 	} else {
-		s.GoBody.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
+		b.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
 	}
 
 	{ // 处理 invoker 获取失败的情况
 
-		s.GoBody.Pn("if %s != nil {", varErr)
+		b.Pn("if %s != nil {", varErr)
 
 		if isThrows {
 			// 使用 err 变量返回错误
 		} else {
 			// 把 err 打印出来
-			s.GoBody.Pn("log.Println(\"WARN:\", %s) /*go:log*/", varErr)
+			b.Pn("log.Println(\"WARN:\", %s)", varErr)
 		}
-		s.GoBody.Pn("return")
+		b.Pn("return")
 
-		s.GoBody.Pn("}") // end if err != nil
+		b.Pn("}") // end if err != nil
 	}
 
 	if numOutArgs > 0 {
-		s.GoBody.Pn("var %s [%d]gi.Argument", varOutArgs, numOutArgs)
+		b.Pn("var %s [%d]gi.Argument", varOutArgs, numOutArgs)
 	}
 
 	for _, line := range beforeArgLines {
-		s.GoBody.Pn(line)
+		b.Pn(line)
 	}
 
 	for _, line := range newArgLines {
-		s.GoBody.Pn(line)
+		b.Pn(line)
 	}
 
 	callArgArgs := "nil"
 	if len(argNames) > 0 {
 		// 比如输出 args := []gi.Argument{arg0,arg1}
 		varArgs := varReg.alloc("args")
-		s.GoBody.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(argNames, ", "))
+		b.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(argNames, ", "))
 		callArgArgs = varArgs
 	}
 
@@ -307,27 +310,31 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	if !isRetVoid {
 		// 有返回值
 		callArgRet = "&" + varRet
-		s.GoBody.Pn("var %s gi.Argument", varRet)
+		b.Pn("var %s gi.Argument", varRet)
 	}
 	callArgOutArgs := "nil"
 	if numOutArgs > 0 {
 		callArgOutArgs = fmt.Sprintf("&%s[0]", varOutArgs)
 	}
-	s.GoBody.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
+	b.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
 
 	if !isRetVoid && parseRetTypeResult != nil {
-		s.GoBody.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
+		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
 	}
 
 	for _, line := range afterCallLines {
-		s.GoBody.Pn(line)
+		b.Pn(line)
 	}
 
 	if len(retParams) > 0 {
-		s.GoBody.Pn("return")
+		b.Pn("return")
 	}
 
-	s.GoBody.Pn("}") // end func
+	b.Pn("}") // end func
+	if b.containsTodo() {
+		globalNumTodoFunc++
+	}
+	s.GoBody.addBlock(b)
 }
 
 type parseRetTypeResult struct {

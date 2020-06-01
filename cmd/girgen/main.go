@@ -69,9 +69,11 @@ func main() {
 
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
 	sourceFile.AddGoImport("unsafe")
+	sourceFile.AddGoImport("log")
 
 	sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", optNamespace)
 	sourceFile.GoBody.Pn("var _ unsafe.Pointer")
+	sourceFile.GoBody.Pn("var _ *log.Logger")
 	sourceFile.GoBody.Pn("func init() {")
 	sourceFile.GoBody.Pn("repo := gi.DefaultRepository()")
 	sourceFile.GoBody.Pn("_, err := repo.Require(%q, %q, gi.REPOSITORY_LOAD_FLAG_LAZY)",
@@ -165,6 +167,9 @@ func main() {
 	}
 	outFile := filepath.Join(optDir, pkg+"_auto.go")
 	sourceFile.Save(outFile)
+
+	log.Printf("stat TODO/ALL %d/%d %.2f%%\n", globalNumTodoFunc, globalFuncNextIdx,
+		float64(globalNumTodoFunc)/float64(globalFuncNextIdx)*100)
 }
 
 func pConstant(constants []string, ci *gi.ConstantInfo) []string {

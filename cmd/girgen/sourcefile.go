@@ -38,7 +38,10 @@ func NewSourceFile(pkg string) *SourceFile {
 }
 
 func (s *SourceFile) Print() {
-	s.WriteTo(os.Stdout)
+	err := s.writeTo(os.Stdout)
+	if err != nil {
+		log.Println("WARN:", err)
+	}
 }
 
 func (s *SourceFile) Save(filename string) {
@@ -46,13 +49,16 @@ func (s *SourceFile) Save(filename string) {
 	if err != nil {
 		log.Fatal("fail to create file:", err)
 	}
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		if err != nil {
+			log.Println("failed to close file:", err)
+		}
+	}()
 
-	s.WriteTo(f)
-
-	err = f.Sync()
+	err = s.writeTo(f)
 	if err != nil {
-		log.Fatal("fail to sync file:", err)
+		log.Fatal("failed to write to file:", err)
 	}
 
 	err = exec.Command("go", "fmt", filename).Run()
@@ -61,38 +67,66 @@ func (s *SourceFile) Save(filename string) {
 	}
 }
 
-func (s *SourceFile) WriteTo(w io.Writer) {
-	io.WriteString(w, "package "+s.Pkg+"\n")
+func (s *SourceFile) writeTo(w io.Writer) error {
+	_, err := io.WriteString(w, "package "+s.Pkg+"\n")
+	if err != nil {
+		return err
+	}
 
 	if len(s.CPkgs) > 0 ||
 		len(s.CIncludes) > 0 ||
 		len(s.CHeader.buf.Bytes()) > 0 ||
 		len(s.CBody.buf.Bytes()) > 0 {
 
-		io.WriteString(w, "/*\n")
+		_, err = io.WriteString(w, "/*\n")
+		if err != nil {
+			return err
+		}
 		if len(s.CPkgs) != 0 {
 			str := "#cgo pkg-config: " + strings.Join(s.CPkgs, " ") + "\n"
-			io.WriteString(w, str)
+			_, err = io.WriteString(w, str)
+			if err != nil {
+				return err
+			}
 		}
 
 		sort.Strings(s.CIncludes)
 		for _, inc := range s.CIncludes {
-			io.WriteString(w, "#include "+inc+"\n")
+			_, err = io.WriteString(w, "#include "+inc+"\n")
+			if err != nil {
+				return err
+			}
 		}
 
-		w.Write(s.CHeader.buf.Bytes())
-		w.Write(s.CBody.buf.Bytes())
+		_, err = w.Write(s.CHeader.buf.Bytes())
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(s.CBody.buf.Bytes())
+		if err != nil {
+			return err
+		}
 
-		io.WriteString(w, "*/\n")
-		io.WriteString(w, "import \"C\"\n")
+		_, err = io.WriteString(w, "*/\n")
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(w, "import \"C\"\n")
+		if err != nil {
+			return err
+		}
 	}
 
 	sort.Strings(s.GoImports)
 	for _, imp := range s.GoImports {
-		io.WriteString(w, "import "+imp+"\n")
+		_, err = io.WriteString(w, "import "+imp+"\n")
+		if err != nil {
+			return err
+		}
 	}
 
-	w.Write(s.GoBody.buf.Bytes())
+	_, err = w.Write(s.GoBody.buf.Bytes())
+	return err
 }
 
 func (s *SourceFile) AddCPkg(pkg string) {
@@ -184,4 +218,26 @@ func (v *SourceBody) Pn(format string, a ...interface{}) {
 func (v *SourceBody) P(format string, a ...interface{}) {
 	str := fmt.Sprintf(format, a...)
 	v.writeStr(str)
+}
+
+func (v *SourceBody) addBlock(block *SourceBlock) {
+	v.buf.Write(block.buf.Bytes())
+}
+
+type SourceBlock struct {
+	buf bytes.Buffer
+}
+
+func (v *SourceBlock) Pn(format string, a ...interface{}) {
+	v.P(format, a...)
+	v.buf.WriteByte('\n')
+}
+
+func (v *SourceBlock) P(format string, a ...interface{}) {
+	str := fmt.Sprintf(format, a...)
+	v.buf.WriteString(str)
+}
+
+func (v *SourceBlock) containsTodo() bool {
+	return bytes.Contains(v.buf.Bytes(), []byte("TODO"))
 }
