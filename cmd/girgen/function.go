@@ -438,12 +438,22 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 			elemTypeInfo := ti.ParamType(0)
 			elemTypeTag := elemTypeInfo.Tag()
 
-			type0 = getDebugType("array type c, elemTypeTag: %v, arrLen: %v", elemTypeTag, lenArgIdx)
+			type0 = getDebugType("array type c, elemTypeTag: %v, isPtr: %v", elemTypeTag, elemTypeInfo.IsPointer())
 
 			elemType := getArgumentType(elemTypeTag)
 			if elemType != "" && !elemTypeInfo.IsPointer() {
 				type0 = "gi." + elemType + "Array"
 
+				argName := "0"
+				if lenArgIdx >= 0 {
+					argInfo := fi.Arg(lenArgIdx)
+					argName = argInfo.Name()
+					argInfo.Unref()
+				}
+				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: int(%s) }", type0, varRet, argName)
+
+			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+				type0 = "gi.CStrArray"
 				argName := "0"
 				if lenArgIdx >= 0 {
 					argInfo := fi.Arg(lenArgIdx)

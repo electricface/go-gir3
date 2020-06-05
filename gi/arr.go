@@ -55,6 +55,43 @@ func (arr BoolArray) Copy() []bool {
 	return result
 }
 
+type CStrArray struct {
+	P unsafe.Pointer
+	Len int
+}
+
+func (arr CStrArray) Free() {
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr CStrArray) AsSlice() []unsafe.Pointer {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	slice := (*(*[1 << 31]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	return slice
+}
+
+func (arr CStrArray) Copy() []string {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+	var result []string
+	slice := (*(*[1 << 32]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	for _, value := range slice {
+		if value == nil {
+			break
+		}
+		result = append(result, GoString(value))
+	}
+	return result
+}
+
+
 // 以下代码是用 gen_array_code 工具自动生成的
 
 type DoubleArray struct {
