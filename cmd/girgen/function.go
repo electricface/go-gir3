@@ -251,7 +251,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		// 有返回值
 		varRet = varReg.alloc("ret")
 		varResult = varReg.alloc("result")
-		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg)
+		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg, fi)
+		// 把返回值加在 retParams 列表最前面
 		retParams = append([]string{varResult + " " + parseRetTypeResult.type0}, retParams...)
 	}
 
@@ -318,12 +319,12 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 	b.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
 
-	if !isRetVoid && parseRetTypeResult != nil {
-		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
-	}
-
 	for _, line := range afterCallLines {
 		b.Pn(line)
+	}
+
+	if !isRetVoid && parseRetTypeResult != nil {
+		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
 	}
 
 	if len(retParams) > 0 {
@@ -343,13 +344,10 @@ type parseRetTypeResult struct {
 	type0 string // 目标函数中返回值类型
 }
 
-func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeResult {
-	debugMsg := ""
+func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.FunctionInfo) *parseRetTypeResult {
 	isPtr := ti.IsPointer()
 	tag := ti.Tag()
-	debugMsg = fmt.Sprintf("isPtr: %v, tag: %v", isPtr, tag)
-
-	type0 := fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+	type0 := getDebugType("isPtr: %v, tag: %v", isPtr, tag)
 	expr := varRet + ".Int()/*TODO*/"
 	field := ""
 
@@ -397,6 +395,34 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 			}
 		}
 		bi.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		arrType := ti.ArrayType()
+		lenArgIdx := ti.ArrayLength()
+
+		type0 = getDebugType("array type: %v", arrType)
+
+		if arrType == gi.ARRAY_TYPE_C {
+			elemTypeInfo := ti.ParamType(0)
+			elemTypeTag := elemTypeInfo.Tag()
+
+			type0 = getDebugType("array type c, elemTypeTag: %v, arrLen: %v", elemTypeTag, lenArgIdx)
+
+			elemType := getArgumentType(elemTypeTag)
+			if elemType != "" && !elemTypeInfo.IsPointer() {
+				type0 = "gi." + elemType + "Array"
+
+				argName := "0"
+				if lenArgIdx >= 0 {
+					argInfo := fi.Arg(lenArgIdx)
+					argName = argInfo.Name()
+					argInfo.Unref()
+				}
+				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: int(%s) }", type0, varRet, argName)
+			}
+
+			elemTypeInfo.Unref()
+		}
 	}
 
 	return &parseRetTypeResult{
@@ -404,6 +430,12 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg) *parseRetTypeR
 		expr:  expr,
 		type0: type0,
 	}
+}
+
+func getDebugType(format string, args ...interface{}) string {
+	debugMsg := fmt.Sprintf(format, args...)
+	type0 := fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+	return type0
 }
 
 type parseArgTypeDirOutResult struct {
@@ -650,20 +682,19 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		bi.Unref()
 
 	case gi.TYPE_TAG_ARRAY:
-		ai := ti.ArrayType()
-		if ai == gi.ARRAY_TYPE_C {
-			p0ti := ti.ParamType(0)
-			p0tag := p0ti.Tag()
-			debugMsg = fmt.Sprintf("array type c, p0tag: %s", p0tag)
-			type0 = fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+		arrType := ti.ArrayType()
+		if arrType == gi.ARRAY_TYPE_C {
+			elemTypeInfo := ti.ParamType(0)
+			elemTypeTag := elemTypeInfo.Tag()
+			type0 = getDebugType("array type c, elemTypeTag: %v", elemTypeTag)
 
-			arrElemType := getArgumentType(p0tag)
-			if arrElemType != "" && !p0ti.IsPointer() {
-				type0 = "gi." + getArgumentType(p0tag) + "Array"
+			elemType := getArgumentType(elemTypeTag)
+			if elemType != "" && !elemTypeInfo.IsPointer() {
+				type0 = "gi." + elemType + "Array"
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
 			}
 
-			p0ti.Unref()
+			elemTypeInfo.Unref()
 		}
 	}
 

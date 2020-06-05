@@ -31,10 +31,19 @@ var globalDeps []string
 var globalCfg *config
 var globalSourceFile *SourceFile
 
+func getGoPath() string {
+	gopath := os.Getenv("GOPATH")
+	paths := strings.Split(gopath, ":")
+	if len(paths) > 0 {
+		return strings.TrimSpace(paths[0])
+	}
+	return ""
+}
+
 func main() {
 	flag.Parse()
 	if optDir == "" {
-		gopath := os.Getenv("GOPATH")
+		gopath := getGoPath()
 		if gopath == "" {
 			log.Fatal(errors.New("do not set env var GOPATH"))
 		}
@@ -166,6 +175,7 @@ func main() {
 		log.Fatal(err)
 	}
 	outFile := filepath.Join(optDir, pkg+"_auto.go")
+	log.Print("outFile:", outFile)
 	sourceFile.Save(outFile)
 
 	log.Printf("stat TODO/ALL %d/%d %.2f%%\n", globalNumTodoFunc, globalFuncNextIdx,
