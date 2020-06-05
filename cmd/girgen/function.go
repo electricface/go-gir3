@@ -158,8 +158,36 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		b.Pn("// container is nil")
 	}
 
-	numArg := fi.NumArg()
-	for i := argIdxStart; i < numArg; i++ {
+	lenArgMap := make(map[int]struct{}) // 键是长度参数的 index
+	numArgs := fi.NumArg()
+	for i := argIdxStart; i < numArgs; i++ {
+		argInfo := fi.Arg(i)
+		argType := argInfo.Type()
+
+		typeTag := argType.Tag()
+		if typeTag == gi.TYPE_TAG_ARRAY {
+			lenArgIdx := argType.ArrayLength()
+			if lenArgIdx >= 0 {
+				lenArgMap[lenArgIdx] = struct{}{}
+				b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
+			}
+		}
+
+		argType.Unref()
+		argInfo.Unref()
+	}
+	retTypeInfo := fi.ReturnType()
+	defer retTypeInfo.Unref()
+	retTypeTag := retTypeInfo.Tag()
+	if retTypeTag == gi.TYPE_TAG_ARRAY {
+		lenArgIdx := retTypeInfo.ArrayLength()
+		if lenArgIdx >= 0 {
+			lenArgMap[lenArgIdx] = struct{}{}
+			b.Pn("// ret lenArgIdx %v", lenArgIdx)
+		}
+	}
+
+	for i := argIdxStart; i < numArgs; i++ {
 		fiArg := fi.Arg(i)
 		argTypeInfo := fiArg.Type()
 		dir := fiArg.Direction()
@@ -198,7 +226,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			// 作为目标函数的返回值之一
 			parseResult := parseArgTypeDirOut(argTypeInfo, &varReg)
 			type0 := parseResult.type0
-			retParams = append(retParams, paramName+" "+type0)
+			if _, ok := lenArgMap[i]; ok {
+				// 参数是数组的长度
+				afterCallLines = append(afterCallLines,
+					fmt.Sprintf("var %v %v; _ = %v", paramName, type0, paramName))
+			} else {
+				retParams = append(retParams, paramName+" "+type0)
+			}
 
 			varArg := varReg.alloc("arg_" + paramName)
 			argNames = append(argNames, varArg)
@@ -235,8 +269,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		retParams = append(retParams, varErr+" error")
 	}
 
-	retTypeInfo := fi.ReturnType()
-	defer retTypeInfo.Unref()
 
 	var varRet string
 	var varResult string
