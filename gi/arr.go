@@ -121,7 +121,10 @@ func (arr *CStrArray) SetLenZT() {
 	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arrLenMax:arrLenMax]
 	for i, value := range slice {
 		if value == nil {
-			arr.Len = i+1
+			// 0 1 2
+			// p p nil
+			// 比如长度为3 的数组，最后一个是零值，实际是2个元素，在 value == nil 时，i 是 2, 所以 arr.Len = i
+			arr.Len = i
 			break
 		}
 	}
