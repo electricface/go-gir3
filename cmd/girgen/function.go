@@ -35,6 +35,28 @@ func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 	return getFunctionName(fi)
 }
 
+/*
+
+{ // begin func
+
+beforeArgLines
+
+newArgLines
+
+call
+
+afterCallLines
+
+setParamLines
+
+beforeRetLines
+
+return
+
+} // end func
+
+*/
+
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	b := &SourceBlock{}
 	symbol := fi.Symbol()
@@ -72,6 +94,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	// 在 invoker.Call 执行后需要执行的语句
 	var afterCallLines []string
+
+	var setParamLines []string
+
+	var beforeRetLines []string
 
 	// direction 为 inout 或 out 的参数个数
 	var numOutArgs int
@@ -158,10 +184,12 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		b.Pn("// container is nil")
 	}
 
-	lenArgMap := make(map[int]struct{}) // 键是长度参数的 index
+	// lenArgMap 是数组长度参数的集合，键是长度参数的 index
+	lenArgMap := make(map[int]struct{})
 	numArgs := fi.NumArg()
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
+		varReg.regParam(i, argInfo.Name())
 		argType := argInfo.Type()
 
 		typeTag := argType.Tag()
@@ -188,9 +216,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	}
 
 	for i := argIdxStart; i < numArgs; i++ {
-		fiArg := fi.Arg(i)
-		argTypeInfo := fiArg.Type()
-		dir := fiArg.Direction()
+		argInfo := fi.Arg(i)
+		argTypeInfo := argInfo.Type()
+		dir := argInfo.Direction()
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
 			numOutArgs++
@@ -199,7 +227,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			}
 		}
 
-		paramName := varReg.alloc(fiArg.Name())
+		paramName := varReg.getParam(i)
 
 		if dir == gi.DIRECTION_IN || dir == gi.DIRECTION_INOUT {
 			// 作为目标函数的输入参数之一
@@ -224,7 +252,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 		} else if dir == gi.DIRECTION_OUT {
 			// 作为目标函数的返回值之一
-			parseResult := parseArgTypeDirOut(argTypeInfo, &varReg)
+			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg)
 			type0 := parseResult.type0
 			if _, ok := lenArgMap[i]; ok {
 				// 参数是数组的长度
@@ -249,13 +277,15 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 			// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
 			// 或 param1.P = outArgs[1].Pointer()
-			afterCallLines = append(afterCallLines, setParamLine)
+			setParamLines = append(setParamLines, setParamLine)
+
+			beforeRetLines = append(beforeRetLines, parseResult.beforeRetLines...)
 
 			outArgIdx++
 		}
 
 		argTypeInfo.Unref()
-		fiArg.Unref()
+		argInfo.Unref()
 	}
 	if isThrows {
 		numOutArgs++
@@ -268,7 +298,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		afterCallLines = append(afterCallLines, fmt.Sprintf("%v = gi.ToError(%v[%v].%v)", varErr, varOutArgs, outArgIdx, "Pointer()"))
 		retParams = append(retParams, varErr+" error")
 	}
-
 
 	var varRet string
 	var varResult string
@@ -355,11 +384,19 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		b.Pn(line)
 	}
 
+	for _, line := range setParamLines {
+		b.Pn(line)
+	}
+
 	if !isRetVoid && parseRetTypeResult != nil {
 		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
 		if parseRetTypeResult.zeroTerm {
 			b.Pn("%v.SetLenZT()", varResult)
 		}
+	}
+
+	for _, line := range beforeRetLines {
+		b.Pn(line)
 	}
 
 	if len(retParams) > 0 {
@@ -374,9 +411,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 }
 
 type parseRetTypeResult struct {
-	expr  string // 转换 argument 为返回值类型的表达式
-	field string // expr 要给 result 的什么字段设置，比如 .P 字段
-	type0 string // 目标函数中返回值类型
+	expr     string // 转换 argument 为返回值类型的表达式
+	field    string // expr 要给 result 的什么字段设置，比如 .P 字段
+	type0    string // 目标函数中返回值类型
 	zeroTerm bool
 }
 
@@ -419,7 +456,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		biType := bi.Type()
 		if isPtr {
 			type0 = getTypeName(bi)
-			expr = fmt.Sprintf("%s.Pointer()", varRet)
+			expr = fmt.Sprintf("%v.Pointer()", varRet)
 			field = ".P"
 
 		} else {
@@ -472,13 +509,17 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 			}
 
 			elemTypeInfo.Unref()
+		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
+			type0 = getGLibType("ByteArray")
+			expr = fmt.Sprintf("%v.Pointer()", varRet)
+			field = ".P"
 		}
 	}
 
 	return &parseRetTypeResult{
-		field: field,
-		expr:  expr,
-		type0: type0,
+		field:    field,
+		expr:     expr,
+		type0:    type0,
 		zeroTerm: zeroTerm,
 	}
 }
@@ -490,17 +531,19 @@ func getDebugType(format string, args ...interface{}) string {
 }
 
 type parseArgTypeDirOutResult struct {
-	expr         string // 转换 arguemnt 为返回值类型的表达式
-	type0        string // 目标函数中返回值类型
-	needTypeCast bool   // 是否需要类型转换
-	field        string // 表达式赋值的字段
+	expr           string // 转换 arguemnt 为返回值类型的表达式
+	type0          string // 目标函数中返回值类型
+	needTypeCast   bool   // 是否需要类型转换
+	field          string // 表达式赋值的字段
+	beforeRetLines []string
 }
 
-func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
+func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
 	expr := "Int()/*TODO*/"
 	type0 := "int/*TODO_TYPE*/"
 	needTypeCast := false
 	field := ""
+	var beforeRetLines []string
 
 	tag := ti.Tag()
 	switch tag {
@@ -559,13 +602,49 @@ func parseArgTypeDirOut(ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResu
 			}
 		}
 		bi.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		arrType := ti.ArrayType()
+		lenArgIdx := ti.ArrayLength()
+		if arrType == gi.ARRAY_TYPE_C {
+
+			elemTypeInfo := ti.ParamType(0)
+			elemTypeTag := elemTypeInfo.Tag()
+			type0 = getDebugType("array type c, elemTypeTag: %v", elemTypeTag)
+
+			elemType := getArgumentType(elemTypeTag)
+			if elemType != "" && !elemTypeInfo.IsPointer() {
+				type0 = "gi." + elemType + "Array"
+				expr = "Pointer()"
+				field = ".P"
+
+				if lenArgIdx >= 0 {
+					lenArgName := varReg.getParam(lenArgIdx)
+					beforeRetLines = append(beforeRetLines,
+						fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
+				}
+
+			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+				type0 = "gi.CStrArray"
+				expr = "Pointer()"
+				field = ".P"
+			}
+
+			elemTypeInfo.Unref()
+
+		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
+			type0 = getGLibType("ByteArray")
+			expr = "Pointer()"
+			field = ".P"
+		}
 	}
 
 	return &parseArgTypeDirOutResult{
-		expr:         expr,
-		type0:        type0,
-		needTypeCast: needTypeCast,
-		field:        field,
+		expr:           expr,
+		type0:          type0,
+		needTypeCast:   needTypeCast,
+		field:          field,
+		beforeRetLines: beforeRetLines,
 	}
 }
 
@@ -743,9 +822,16 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			if elemType != "" && !elemTypeInfo.IsPointer() {
 				type0 = "gi." + elemType + "Array"
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
+
+			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+				type0 = "gi.CStrArray"
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
 			}
 
 			elemTypeInfo.Unref()
+		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
+			type0 = getGLibType("ByteArray")
+			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
 		}
 	}
 
@@ -754,6 +840,15 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		type0:          type0,
 		beforeArgLines: beforeArgLines,
 		afterCallLines: afterCallLines,
+	}
+}
+
+func getGLibType(type0 string) string {
+	if isSameNamespace("GLib") {
+		return type0
+	} else {
+		addGirImport("GLib")
+		return "glib." + type0
 	}
 }
 
@@ -783,6 +878,19 @@ func getTypeName(bi *gi.BaseInfo) string {
 		globalSourceFile.AddGirImport(pkgBase)
 	}
 	return typeName
+}
+
+func addGirImport(ns string) {
+	pkgBase := ""
+	for _, dep := range globalDeps {
+		if strings.HasPrefix(dep, ns+"-") {
+			pkgBase = strings.ToLower(dep)
+			break
+		}
+	}
+	if pkgBase != "" {
+		globalSourceFile.AddGirImport(pkgBase)
+	}
 }
 
 func getAllDeps(repo *gi.Repository, namespace string) []string {

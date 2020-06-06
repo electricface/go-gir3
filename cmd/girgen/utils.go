@@ -79,12 +79,26 @@ func init() {
 }
 
 type VarReg struct {
-	vars []varNameIdx
+	vars     []varNameIdx
+	paramMap map[int]string
 }
 
 type varNameIdx struct {
 	name string
 	idx  int
+}
+
+func (vr *VarReg) regParam(idx int, name string) string {
+	if vr.paramMap == nil {
+		vr.paramMap = make(map[int]string)
+	}
+	name = vr.alloc(name)
+	vr.paramMap[idx] = name
+	return name
+}
+
+func (vr *VarReg) getParam(idx int) string {
+	return vr.paramMap[idx]
 }
 
 func (vr *VarReg) alloc(prefix string) string {
