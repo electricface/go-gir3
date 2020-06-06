@@ -1656,11 +1656,17 @@ func Malloc(n int) unsafe.Pointer {
 }
 
 func Free(pointer unsafe.Pointer) {
+	if pointer == nil {
+		return
+	}
 	C.free(pointer)
 }
 
 // 注意需要 free 这个字符串
 func CString(str string) unsafe.Pointer {
+	if str == NilStr {
+		return nil
+	}
 	return unsafe.Pointer(C.CString(str))
 }
 

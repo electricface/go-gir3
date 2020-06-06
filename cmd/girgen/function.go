@@ -357,6 +357,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	if !isRetVoid && parseRetTypeResult != nil {
 		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
+		if parseRetTypeResult.zeroTerm {
+			b.Pn("%v.SetLenZT()", varResult)
+		}
 	}
 
 	if len(retParams) > 0 {
@@ -374,6 +377,7 @@ type parseRetTypeResult struct {
 	expr  string // 转换 argument 为返回值类型的表达式
 	field string // expr 要给 result 的什么字段设置，比如 .P 字段
 	type0 string // 目标函数中返回值类型
+	zeroTerm bool
 }
 
 func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.FunctionInfo) *parseRetTypeResult {
@@ -382,6 +386,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 	type0 := getDebugType("isPtr: %v, tag: %v", isPtr, tag)
 	expr := varRet + ".Int()/*TODO*/"
 	field := ""
+	zeroTerm := false
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -431,8 +436,9 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 	case gi.TYPE_TAG_ARRAY:
 		arrType := ti.ArrayType()
 		lenArgIdx := ti.ArrayLength()
+		isZeroTerm := ti.IsZeroTerminated()
 
-		type0 = getDebugType("array type: %v", arrType)
+		type0 = getDebugType("array type: %v, isZeroTerm: %v", arrType, isZeroTerm)
 
 		if arrType == gi.ARRAY_TYPE_C {
 			elemTypeInfo := ti.ParamType(0)
@@ -454,13 +460,15 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 
 			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
 				type0 = "gi.CStrArray"
-				argName := "0"
-				if lenArgIdx >= 0 {
+				lenExpr := "-1" // zero-terminated 以零结尾的数组
+				if !isZeroTerm {
 					argInfo := fi.Arg(lenArgIdx)
-					argName = argInfo.Name()
+					lenExpr = "int(" + argInfo.Name() + ")"
 					argInfo.Unref()
+				} else {
+					zeroTerm = true
 				}
-				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: int(%s) }", type0, varRet, argName)
+				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
 			}
 
 			elemTypeInfo.Unref()
@@ -471,6 +479,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		field: field,
 		expr:  expr,
 		type0: type0,
+		zeroTerm: zeroTerm,
 	}
 }
 

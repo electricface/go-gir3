@@ -24,7 +24,7 @@ func New{{ .TypeName }}Array(values ...{{ .GoElemType }}) {{ .TypeName }}Array {
 	return arr
 }
 
-func (arr {{ .TypeName }}Array) Free() {
+func (arr *{{ .TypeName }}Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -33,7 +33,10 @@ func (arr {{ .TypeName }}Array) AsSlice() []{{ .GoElemType }} {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]{{ .GoElemType }})(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]{{ .GoElemType }})(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -45,7 +48,7 @@ func (arr {{ .TypeName }}Array) Copy() []{{ .GoElemType }} {
 		return nil
 	}
 	result := make([]{{ .GoElemType }}, arr.Len)
-	slice := (*(*[1 << 32]{{ .GoElemType }})(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]{{ .GoElemType }})(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }

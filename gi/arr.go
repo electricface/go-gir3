@@ -2,6 +2,8 @@ package gi
 
 import "unsafe"
 
+const arrLenMax = 1<<32
+
 type BoolArray struct {
 	P unsafe.Pointer
 	Len int
@@ -25,7 +27,7 @@ func NewBoolArray(values ...bool) BoolArray {
 	return arr
 }
 
-func (arr BoolArray) Free() {
+func (arr *BoolArray) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -33,6 +35,9 @@ func (arr BoolArray) Free() {
 func (arr BoolArray) AsSlice() []int32 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
 	}
 	slice := (*(*[1 << 31]int32)(arr.P))[:arr.Len:arr.Len]
 	return slice
@@ -60,16 +65,76 @@ type CStrArray struct {
 	Len int
 }
 
-func (arr CStrArray) Free() {
+// free container
+func (arr *CStrArray) Free() {
 	Free(arr.P)
 	arr.P = nil
+}
+
+func (arr *CStrArray) FreeAll() {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	for i := 0; i < arr.Len; i++ {
+		Free(slice[i])
+	}
+	Free(arr.P)
+	arr.P = nil
+}
+
+const NilStr = "\x00\x00\x00\x00"
+
+func NewCStrArrayWithStrings(values ...string) CStrArray {
+	size := int(unsafe.Sizeof(uintptr(0))) * len(values)
+	p := Malloc(size)
+	arr := CStrArray{
+		P:   p,
+		Len: len(values),
+	}
+	slice := arr.AsSlice()
+	for i, value := range values {
+		slice[i] = CString(value)
+	}
+
+	return arr
+}
+
+func NewCStrArrayZTWithStrings(values ...string) CStrArray {
+	size := int(unsafe.Sizeof(uintptr(0))) * (len(values) +1)
+	p := Malloc(size)
+	arr := CStrArray{
+		P:   p,
+		Len: len(values)+1,
+	}
+	slice := arr.AsSlice()
+	for i, value := range values {
+		slice[i] = CString(value)
+	}
+	slice[len(values)] = nil
+	arr.Len--
+	return arr
+}
+
+func (arr *CStrArray) SetLenZT() {
+	//noinspection GoInvalidIndexOrSliceExpression
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == nil {
+			arr.Len = i+1
+			break
+		}
+	}
 }
 
 func (arr CStrArray) AsSlice() []unsafe.Pointer {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -81,16 +146,56 @@ func (arr CStrArray) Copy() []string {
 		return nil
 	}
 	var result []string
-	slice := (*(*[1 << 32]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
 	for _, value := range slice {
-		if value == nil {
-			break
-		}
 		result = append(result, GoString(value))
 	}
 	return result
 }
 
+type PointerArray struct {
+	P unsafe.Pointer
+	Len int
+}
+
+func (arr *PointerArray) Free() {
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr *PointerArray) SetLenZT() {
+	(*CStrArray)(arr).SetLenZT()
+}
+
+func (arr PointerArray) AsSlice() []unsafe.Pointer {
+	return CStrArray(arr).AsSlice()
+}
+
+func (arr PointerArray) Copy() []unsafe.Pointer {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+	result := make([]unsafe.Pointer, arr.Len)
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	copy(result, slice)
+	return result
+}
+
+
+func NewPointerArray(values ...unsafe.Pointer) PointerArray {
+	size := int(unsafe.Sizeof(uintptr(0))) * len(values)
+	p := Malloc(size)
+	arr := PointerArray{
+		P:   p,
+		Len: len(values),
+	}
+	slice := arr.AsSlice()
+	copy(slice, values)
+	return arr
+}
 
 // 以下代码是用 gen_array_code 工具自动生成的
 
@@ -111,7 +216,7 @@ func NewDoubleArray(values ...float64) DoubleArray {
 	return arr
 }
 
-func (arr DoubleArray) Free() {
+func (arr *DoubleArray) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -120,7 +225,10 @@ func (arr DoubleArray) AsSlice() []float64 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]float64)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]float64)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -132,7 +240,7 @@ func (arr DoubleArray) Copy() []float64 {
 		return nil
 	}
 	result := make([]float64, arr.Len)
-	slice := (*(*[1 << 32]float64)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]float64)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -155,7 +263,7 @@ func NewFloatArray(values ...float32) FloatArray {
 	return arr
 }
 
-func (arr FloatArray) Free() {
+func (arr *FloatArray) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -164,7 +272,10 @@ func (arr FloatArray) AsSlice() []float32 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]float32)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]float32)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -176,7 +287,7 @@ func (arr FloatArray) Copy() []float32 {
 		return nil
 	}
 	result := make([]float32, arr.Len)
-	slice := (*(*[1 << 32]float32)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]float32)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -199,7 +310,7 @@ func NewUniCharArray(values ...rune) UniCharArray {
 	return arr
 }
 
-func (arr UniCharArray) Free() {
+func (arr *UniCharArray) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -208,7 +319,10 @@ func (arr UniCharArray) AsSlice() []rune {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]rune)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]rune)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -220,7 +334,7 @@ func (arr UniCharArray) Copy() []rune {
 		return nil
 	}
 	result := make([]rune, arr.Len)
-	slice := (*(*[1 << 32]rune)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]rune)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -243,7 +357,7 @@ func NewInt8Array(values ...int8) Int8Array {
 	return arr
 }
 
-func (arr Int8Array) Free() {
+func (arr *Int8Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -252,7 +366,10 @@ func (arr Int8Array) AsSlice() []int8 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]int8)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]int8)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -264,7 +381,7 @@ func (arr Int8Array) Copy() []int8 {
 		return nil
 	}
 	result := make([]int8, arr.Len)
-	slice := (*(*[1 << 32]int8)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]int8)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -287,7 +404,7 @@ func NewUint8Array(values ...uint8) Uint8Array {
 	return arr
 }
 
-func (arr Uint8Array) Free() {
+func (arr *Uint8Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -296,7 +413,10 @@ func (arr Uint8Array) AsSlice() []uint8 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]uint8)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]uint8)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -308,7 +428,7 @@ func (arr Uint8Array) Copy() []uint8 {
 		return nil
 	}
 	result := make([]uint8, arr.Len)
-	slice := (*(*[1 << 32]uint8)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]uint8)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -331,7 +451,7 @@ func NewInt16Array(values ...int16) Int16Array {
 	return arr
 }
 
-func (arr Int16Array) Free() {
+func (arr *Int16Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -340,7 +460,10 @@ func (arr Int16Array) AsSlice() []int16 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]int16)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]int16)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -352,7 +475,7 @@ func (arr Int16Array) Copy() []int16 {
 		return nil
 	}
 	result := make([]int16, arr.Len)
-	slice := (*(*[1 << 32]int16)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]int16)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -375,7 +498,7 @@ func NewUint16Array(values ...uint16) Uint16Array {
 	return arr
 }
 
-func (arr Uint16Array) Free() {
+func (arr *Uint16Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -384,7 +507,10 @@ func (arr Uint16Array) AsSlice() []uint16 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]uint16)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]uint16)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -396,7 +522,7 @@ func (arr Uint16Array) Copy() []uint16 {
 		return nil
 	}
 	result := make([]uint16, arr.Len)
-	slice := (*(*[1 << 32]uint16)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]uint16)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -419,7 +545,7 @@ func NewInt32Array(values ...int32) Int32Array {
 	return arr
 }
 
-func (arr Int32Array) Free() {
+func (arr *Int32Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -428,7 +554,10 @@ func (arr Int32Array) AsSlice() []int32 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]int32)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]int32)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -440,7 +569,7 @@ func (arr Int32Array) Copy() []int32 {
 		return nil
 	}
 	result := make([]int32, arr.Len)
-	slice := (*(*[1 << 32]int32)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]int32)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -463,7 +592,7 @@ func NewUint32Array(values ...uint32) Uint32Array {
 	return arr
 }
 
-func (arr Uint32Array) Free() {
+func (arr *Uint32Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -472,7 +601,10 @@ func (arr Uint32Array) AsSlice() []uint32 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]uint32)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]uint32)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -484,7 +616,7 @@ func (arr Uint32Array) Copy() []uint32 {
 		return nil
 	}
 	result := make([]uint32, arr.Len)
-	slice := (*(*[1 << 32]uint32)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]uint32)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -507,7 +639,7 @@ func NewInt64Array(values ...int64) Int64Array {
 	return arr
 }
 
-func (arr Int64Array) Free() {
+func (arr *Int64Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -516,7 +648,10 @@ func (arr Int64Array) AsSlice() []int64 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]int64)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]int64)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -528,7 +663,7 @@ func (arr Int64Array) Copy() []int64 {
 		return nil
 	}
 	result := make([]int64, arr.Len)
-	slice := (*(*[1 << 32]int64)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]int64)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
@@ -551,7 +686,7 @@ func NewUint64Array(values ...uint64) Uint64Array {
 	return arr
 }
 
-func (arr Uint64Array) Free() {
+func (arr *Uint64Array) Free() {
 	Free(arr.P)
 	arr.P = nil
 }
@@ -560,7 +695,10 @@ func (arr Uint64Array) AsSlice() []uint64 {
 	if arr.Len < 0 {
 		panic("arr.len < 0")
 	}
-	slice := (*(*[1 << 31]uint64)(arr.P))[:arr.Len:arr.Len]
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]uint64)(arr.P))[:arr.Len:arr.Len]
 	return slice
 }
 
@@ -572,8 +710,9 @@ func (arr Uint64Array) Copy() []uint64 {
 		return nil
 	}
 	result := make([]uint64, arr.Len)
-	slice := (*(*[1 << 32]uint64)(arr.P))[:arr.Len:arr.Len]
+	slice := (*(*[arrLenMax]uint64)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
 }
+
 
