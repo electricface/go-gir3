@@ -178,7 +178,7 @@ func main() {
 	log.Print("outFile:", outFile)
 	sourceFile.Save(outFile)
 
-	log.Printf("stat TODO/ALL %d/%d %.2f%%\n", globalNumTodoFunc, globalFuncNextIdx,
+	log.Printf("stat %v TODO/ALL %d/%d %.2f%%\n", optNamespace, globalNumTodoFunc, globalFuncNextIdx,
 		float64(globalNumTodoFunc)/float64(globalFuncNextIdx)*100)
 }
 

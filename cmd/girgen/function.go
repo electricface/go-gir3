@@ -470,6 +470,27 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		}
 		bi.Unref()
 
+	case gi.TYPE_TAG_ERROR:
+		type0 = getGLibType("Error")
+		expr = fmt.Sprintf("%v.Pointer()", varRet)
+		field = ".P"
+
+	case gi.TYPE_TAG_GTYPE:
+		type0 = "gi.GType"
+		expr = fmt.Sprintf("gi.GType(%v.Uint())", varRet)
+
+	case gi.TYPE_TAG_GHASH:
+		type0 = getGLibType("HashTable")
+		expr = fmt.Sprintf("%v.Pointer()", varRet)
+		field = ".P"
+
+	case gi.TYPE_TAG_VOID:
+		isPtr := ti.IsPointer()
+		if isPtr {
+			type0 = "unsafe.Pointer"
+			expr = varRet + ".Pointer()"
+		}
+
 	case gi.TYPE_TAG_ARRAY:
 		arrType := ti.ArrayType()
 		lenArgIdx := ti.ArrayLength()
@@ -498,14 +519,24 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
 				type0 = "gi.CStrArray"
 				lenExpr := "-1" // zero-terminated 以零结尾的数组
-				if !isZeroTerm {
-					argInfo := fi.Arg(lenArgIdx)
-					lenExpr = "int(" + argInfo.Name() + ")"
-					argInfo.Unref()
-				} else {
+				if isZeroTerm {
 					zeroTerm = true
+				} else {
+					lenExpr = "int(" + varReg.getParam(lenArgIdx) + ")"
 				}
 				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
+				type0 = "gi.PointerArray"
+				lenExpr := "-1" // zero-terminated 以零结尾的数组
+				if isZeroTerm {
+					zeroTerm = true
+				} else {
+					lenExpr = "int(" + varReg.getParam(lenArgIdx) + ")"
+				}
+				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+				type0 = "unsafe.Pointer"
+				expr = varRet + ".Pointer()"
 			}
 
 			elemTypeInfo.Unref()
@@ -603,6 +634,28 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 		}
 		bi.Unref()
 
+	case gi.TYPE_TAG_ERROR:
+		type0 = getGLibType("Error")
+		expr = "Pointer()"
+		field = ".P"
+
+	case gi.TYPE_TAG_GTYPE:
+		type0 = "gi.GType"
+		expr = "Uint()"
+		needTypeCast = true
+
+	case gi.TYPE_TAG_GHASH:
+		type0 = getGLibType("HashTable")
+		expr = "Pointer()"
+		field = ".P"
+
+	case gi.TYPE_TAG_VOID:
+		isPtr := ti.IsPointer()
+		if isPtr {
+			type0 = "unsafe.Pointer"
+			expr = "Pointer()"
+		}
+
 	case gi.TYPE_TAG_ARRAY:
 		arrType := ti.ArrayType()
 		lenArgIdx := ti.ArrayLength()
@@ -628,6 +681,26 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 				type0 = "gi.CStrArray"
 				expr = "Pointer()"
 				field = ".P"
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
+				type0 = "gi.PointerArray"
+				expr = "Pointer()"
+				field = ".P"
+
+				if lenArgIdx >= 0 {
+					lenArgName := varReg.getParam(lenArgIdx)
+					beforeRetLines = append(beforeRetLines,
+						fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
+				} else {
+					beforeRetLines = append(beforeRetLines,
+						fmt.Sprintf("%v.Len = -1", paramName))
+
+					// 注意: 可能不一定是 Zero Term 的
+					beforeRetLines = append(beforeRetLines,
+						fmt.Sprintf("%v.SetLenZT()", paramName))
+				}
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+				type0 = "unsafe.Pointer"
+				expr = "Pointer()"
 			}
 
 			elemTypeInfo.Unref()
@@ -811,6 +884,18 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 		}
 		bi.Unref()
 
+	case gi.TYPE_TAG_ERROR:
+		type0 = getGLibType("Error")
+		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+
+	case gi.TYPE_TAG_GTYPE:
+		type0 = "gi.GType"
+		newArgExpr = fmt.Sprintf("gi.NewUintArgument(uint(%v))", varArg)
+
+	case gi.TYPE_TAG_GHASH:
+		type0 = getGLibType("HashTable")
+		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+
 	case gi.TYPE_TAG_ARRAY:
 		arrType := ti.ArrayType()
 		if arrType == gi.ARRAY_TYPE_C {
@@ -826,6 +911,12 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
 				type0 = "gi.CStrArray"
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
+				type0 = "gi.PointerArray"
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+				type0 = "unsafe.Pointer"
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varArg)
 			}
 
 			elemTypeInfo.Unref()

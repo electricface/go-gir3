@@ -43,6 +43,8 @@ import (
 	"unsafe"
 )
 
+type GType uint
+
 // utils
 
 // Convert GSList containing strings to []string
@@ -1674,4 +1676,3 @@ func GoString(p unsafe.Pointer) string {
 	str := C.GoString((*C.char)(p))
 	return str
 }
-
