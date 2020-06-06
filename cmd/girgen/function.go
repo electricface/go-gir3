@@ -305,7 +305,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	// 是否**无**返回值
 	var isRetVoid bool
-	if gi.TYPE_TAG_VOID == retTypeInfo.Tag() {
+	if gi.TYPE_TAG_VOID == retTypeInfo.Tag() && !retTypeInfo.IsPointer() {
 		// 无返回值
 		isRetVoid = true
 	} else {
