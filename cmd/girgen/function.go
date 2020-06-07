@@ -494,6 +494,16 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		expr = fmt.Sprintf("%v.Pointer()", varRet)
 		field = ".P"
 
+	case gi.TYPE_TAG_GLIST:
+		type0 = getGLibType("List")
+		expr = fmt.Sprintf("%v.Pointer()", varRet)
+		field = ".P"
+
+	case gi.TYPE_TAG_GSLIST:
+		type0 = getGLibType("SList")
+		expr = fmt.Sprintf("%v.Pointer()", varRet)
+		field = ".P"
+
 	case gi.TYPE_TAG_VOID:
 		isPtr := ti.IsPointer()
 		if isPtr {
@@ -656,6 +666,16 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 
 	case gi.TYPE_TAG_GHASH:
 		type0 = getGLibType("HashTable")
+		expr = "Pointer()"
+		field = ".P"
+
+	case gi.TYPE_TAG_GLIST:
+		type0 = getGLibType("List")
+		expr = "Pointer()"
+		field = ".P"
+
+	case gi.TYPE_TAG_GSLIST:
+		type0 = getGLibType("SList")
 		expr = "Pointer()"
 		field = ".P"
 
@@ -914,6 +934,14 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 
 	case gi.TYPE_TAG_GHASH:
 		type0 = getGLibType("HashTable")
+		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+
+	case gi.TYPE_TAG_GLIST:
+		type0 = getGLibType("List")
+		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
+
+	case gi.TYPE_TAG_GSLIST:
+		type0 = getGLibType("SList")
 		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v.P)", varArg)
 
 	case gi.TYPE_TAG_ARRAY:
