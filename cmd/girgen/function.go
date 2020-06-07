@@ -458,7 +458,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		if isPtr {
 			type0 = getTypeName(bi)
 
-			if fiFlags & gi.FUNCTION_IS_CONSTRUCTOR != 0 {
+			if fiFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 				container := fi.Container()
 				if container != nil {
 					type0 = getTypeName(container)
@@ -880,7 +880,17 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 					// Object => IObject
 					type0 = "I" + type0
 				}
-				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P_%s())", varArg, bi.Name())
+
+				// 生成检查接口变量是否为 nil 的代码。如果不处理接口变量为 nil, 那么如果接口变量为 nil，
+				// 则会导致 $varArg.P_XXX() 这里 panic。
+				varTmp := varReg.alloc("tmp")
+				beforeArgLines = append(beforeArgLines,
+					fmt.Sprintf("var %v unsafe.Pointer", varTmp),
+					fmt.Sprintf("if %v != nil {", varArg),
+					fmt.Sprintf("%v = %v.P_%v()", varTmp, varArg, bi.Name()),
+					"}", // end if
+				)
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varTmp)
 			}
 
 		} else {
