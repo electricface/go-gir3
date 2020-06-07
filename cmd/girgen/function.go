@@ -424,6 +424,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 	expr := varRet + ".Int()/*TODO*/"
 	field := ""
 	zeroTerm := false
+	fiFlags := fi.Flags()
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -456,6 +457,15 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		biType := bi.Type()
 		if isPtr {
 			type0 = getTypeName(bi)
+
+			if fiFlags & gi.FUNCTION_IS_CONSTRUCTOR != 0 {
+				container := fi.Container()
+				if container != nil {
+					type0 = getTypeName(container)
+					container.Unref()
+				}
+			}
+
 			expr = fmt.Sprintf("%v.Pointer()", varRet)
 			field = ".P"
 
