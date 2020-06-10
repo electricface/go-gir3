@@ -51,7 +51,7 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 		funcInfo = ToFunctionInfo(bi)
 		// NOTE: 不要再 unref funcInfo 了
 
-	case INFO_TYPE_INTERFACE, INFO_TYPE_OBJECT, INFO_TYPE_STRUCT:
+	case INFO_TYPE_INTERFACE, INFO_TYPE_OBJECT, INFO_TYPE_STRUCT, INFO_TYPE_UNION:
 		var methodInfo *FunctionInfo
 		switch type0 {
 		case INFO_TYPE_INTERFACE:
@@ -63,6 +63,9 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 		case INFO_TYPE_STRUCT:
 			si := ToStructInfo(bi)
 			methodInfo = si.FindMethod(fnName)
+		case INFO_TYPE_UNION:
+			ui := ToUnionInfo(bi)
+			methodInfo = ui.FindMethod(fnName)
 		}
 		if methodInfo == nil {
 			return Invoker{}, fmt.Errorf("not found %q in %s %v", fnName, type0, name)

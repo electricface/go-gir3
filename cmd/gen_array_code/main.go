@@ -78,6 +78,7 @@ func main() {
 		{TypeName: "Uint32", GoElemType: "uint32"},
 		{TypeName: "Int64", GoElemType: "int64"},
 		{TypeName: "Uint64", GoElemType: "uint64"},
+		{TypeName: "GType", GoElemType: "GType"},
 	}
 	for _, param := range arrParams {
 		err = t1.Execute(os.Stdout, param)

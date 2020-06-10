@@ -2,10 +2,10 @@ package gi
 
 import "unsafe"
 
-const arrLenMax = 1<<32
+const arrLenMax = 1 << 32
 
 type BoolArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -61,7 +61,7 @@ func (arr BoolArray) Copy() []bool {
 }
 
 type CStrArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -101,11 +101,11 @@ func NewCStrArrayWithStrings(values ...string) CStrArray {
 }
 
 func NewCStrArrayZTWithStrings(values ...string) CStrArray {
-	size := int(unsafe.Sizeof(uintptr(0))) * (len(values) +1)
+	size := int(unsafe.Sizeof(uintptr(0))) * (len(values) + 1)
 	p := Malloc(size)
 	arr := CStrArray{
 		P:   p,
-		Len: len(values)+1,
+		Len: len(values) + 1,
 	}
 	slice := arr.AsSlice()
 	for i, value := range values {
@@ -157,7 +157,7 @@ func (arr CStrArray) Copy() []string {
 }
 
 type PointerArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -187,7 +187,6 @@ func (arr PointerArray) Copy() []unsafe.Pointer {
 	return result
 }
 
-
 func NewPointerArray(values ...unsafe.Pointer) PointerArray {
 	size := int(unsafe.Sizeof(uintptr(0))) * len(values)
 	p := Malloc(size)
@@ -203,7 +202,7 @@ func NewPointerArray(values ...unsafe.Pointer) PointerArray {
 // 以下代码是用 gen_array_code 工具自动生成的
 
 type DoubleArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -248,9 +247,8 @@ func (arr DoubleArray) Copy() []float64 {
 	return result
 }
 
-
 type FloatArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -295,9 +293,8 @@ func (arr FloatArray) Copy() []float32 {
 	return result
 }
 
-
 type UniCharArray struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -342,9 +339,8 @@ func (arr UniCharArray) Copy() []rune {
 	return result
 }
 
-
 type Int8Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -389,9 +385,8 @@ func (arr Int8Array) Copy() []int8 {
 	return result
 }
 
-
 type Uint8Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -436,9 +431,8 @@ func (arr Uint8Array) Copy() []uint8 {
 	return result
 }
 
-
 type Int16Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -483,9 +477,8 @@ func (arr Int16Array) Copy() []int16 {
 	return result
 }
 
-
 type Uint16Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -530,9 +523,8 @@ func (arr Uint16Array) Copy() []uint16 {
 	return result
 }
 
-
 type Int32Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -577,9 +569,8 @@ func (arr Int32Array) Copy() []int32 {
 	return result
 }
 
-
 type Uint32Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -624,9 +615,8 @@ func (arr Uint32Array) Copy() []uint32 {
 	return result
 }
 
-
 type Int64Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -671,9 +661,8 @@ func (arr Int64Array) Copy() []int64 {
 	return result
 }
 
-
 type Uint64Array struct {
-	P unsafe.Pointer
+	P   unsafe.Pointer
 	Len int
 }
 
@@ -718,4 +707,48 @@ func (arr Uint64Array) Copy() []uint64 {
 	return result
 }
 
+type GTypeArray struct {
+	P   unsafe.Pointer
+	Len int
+}
 
+func NewGTypeArray(values ...GType) GTypeArray {
+	size := int(unsafe.Sizeof(GType(0))) * len(values)
+	p := Malloc(size)
+	arr := GTypeArray{
+		P:   p,
+		Len: len(values),
+	}
+	slice := arr.AsSlice()
+	copy(slice, values)
+	return arr
+}
+
+func (arr *GTypeArray) Free() {
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr GTypeArray) AsSlice() []GType {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+	slice := (*(*[arrLenMax]GType)(arr.P))[:arr.Len:arr.Len]
+	return slice
+}
+
+func (arr GTypeArray) Copy() []GType {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+	result := make([]GType, arr.Len)
+	slice := (*(*[arrLenMax]GType)(arr.P))[:arr.Len:arr.Len]
+	copy(result, slice)
+	return result
+}

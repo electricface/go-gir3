@@ -821,6 +821,9 @@ func getArgumentType(tag gi.TypeTag) (str string) {
 
 	case gi.TYPE_TAG_UNICHAR:
 		str = "Uint32"
+
+	case gi.TYPE_TAG_GTYPE:
+		str = "GType"
 	}
 	return
 }

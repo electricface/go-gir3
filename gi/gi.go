@@ -43,7 +43,7 @@ import (
 	"unsafe"
 )
 
-type GType uint
+type GType C.GType
 
 // utils
 
