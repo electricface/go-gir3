@@ -219,9 +219,17 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		argInfo := fi.Arg(i)
 		argTypeInfo := argInfo.Type()
 		dir := argInfo.Direction()
+		isCallerAlloc := argInfo.IsCallerAllocates()
+
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
-			numOutArgs++
+
+			if dir == gi.DIRECTION_OUT && isCallerAlloc {
+				// numInArgs++
+			} else {
+				numOutArgs++
+			}
+
 			if varOutArgs == "" {
 				varOutArgs = varReg.alloc("outArgs")
 			}
@@ -252,36 +260,44 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 		} else if dir == gi.DIRECTION_OUT {
 			// 作为目标函数的返回值之一
-			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg)
+			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg, isCallerAlloc)
 			type0 := parseResult.type0
 			if _, ok := lenArgMap[i]; ok {
 				// 参数是数组的长度
 				afterCallLines = append(afterCallLines,
 					fmt.Sprintf("var %v %v; _ = %v", paramName, type0, paramName))
-			} else {
+			} else if parseResult.isRet {
 				retParams = append(retParams, paramName+" "+type0)
 			}
 
 			varArg := varReg.alloc("arg_" + paramName)
 			argNames = append(argNames, varArg)
-			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
-			getValExpr := fmt.Sprintf("%v[%v].%v", varOutArgs, outArgIdx, parseResult.expr)
 
-			setParamLine := fmt.Sprintf("%v%v = %v",
-				paramName, parseResult.field, getValExpr)
+			if parseResult.isRet {
+				newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
+				getValExpr := fmt.Sprintf("%v[%v].%v", varOutArgs, outArgIdx, parseResult.expr)
 
-			if parseResult.needTypeCast {
-				setParamLine = fmt.Sprintf("%v%v = %v(%s)",
-					paramName, parseResult.field, type0, getValExpr)
+				setParamLine := fmt.Sprintf("%v%v = %v",
+					paramName, parseResult.field, getValExpr)
+
+				if parseResult.needTypeCast {
+					setParamLine = fmt.Sprintf("%v%v = %v(%s)",
+						paramName, parseResult.field, type0, getValExpr)
+				}
+
+				// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
+				// 或 param1.P = outArgs[1].Pointer()
+				setParamLines = append(setParamLines, setParamLine)
+				outArgIdx++
+			} else {
+				// out 类型的参数，依旧作为目标函数的参数，一般是指针类型
+				params = append(params, paramName+" "+parseResult.type0)
+				newArgLines = append(newArgLines,
+					fmt.Sprintf("%v := gi.NewPointerArgument(%v)", varArg, parseResult.expr))
 			}
-
-			// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
-			// 或 param1.P = outArgs[1].Pointer()
-			setParamLines = append(setParamLines, setParamLine)
 
 			beforeRetLines = append(beforeRetLines, parseResult.beforeRetLines...)
 
-			outArgIdx++
 		}
 
 		argTypeInfo.Unref()
@@ -587,16 +603,21 @@ type parseArgTypeDirOutResult struct {
 	needTypeCast   bool   // 是否需要类型转换
 	field          string // 表达式赋值的字段
 	beforeRetLines []string
+	isRet          bool // 是否作为返回值
 }
 
-func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirOutResult {
-	expr := "Int()/*TODO*/"
-	type0 := "int/*TODO_TYPE*/"
-	needTypeCast := false
-	field := ""
-	var beforeRetLines []string
+func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
+	isCallerAlloc bool) *parseArgTypeDirOutResult {
 
 	tag := ti.Tag()
+
+	expr := "Int()/*TODO*/"
+	type0 := getDebugType("tag: %v", tag)
+	needTypeCast := false
+	field := ""
+	isRet := true
+	var beforeRetLines []string
+
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		// 字符串类型
@@ -628,7 +649,9 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 		isPtr := ti.IsPointer()
 		bi := ti.Interface()
 		biType := bi.Type()
-		if isPtr {
+
+		type0 = getDebugType("tag: ifc, biType: %v", biType)
+		if isPtr && !isCallerAlloc {
 			if biType == gi.INFO_TYPE_OBJECT || biType == gi.INFO_TYPE_INTERFACE ||
 				biType == gi.INFO_TYPE_STRUCT {
 
@@ -650,6 +673,12 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 				type0 = getEnumTypeName(getTypeName(bi))
 				expr = "Int()"
 				needTypeCast = true
+			} else if biType == gi.INFO_TYPE_STRUCT {
+				if isCallerAlloc {
+					isRet = false
+					type0 = getTypeName(bi)
+					expr = paramName + ".P"
+				}
 			}
 		}
 		bi.Unref()
@@ -748,6 +777,7 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg) *pars
 		needTypeCast:   needTypeCast,
 		field:          field,
 		beforeRetLines: beforeRetLines,
+		isRet:          isRet,
 	}
 }
 

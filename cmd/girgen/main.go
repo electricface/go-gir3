@@ -257,6 +257,11 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 	s.GoBody.Pn("    P unsafe.Pointer")
 	s.GoBody.Pn("}")
 
+	size := si.Size()
+	if size > 0 {
+		s.GoBody.Pn("const SizeOfStruct%v = %v", name, size)
+	}
+
 	numMethod := si.NumMethod()
 	for i := 0; i < numMethod; i++ {
 		fi := si.Method(i)
@@ -270,6 +275,11 @@ func pUnion(s *SourceFile, ui *gi.UnionInfo) {
 	s.GoBody.Pn("type %s struct {", name)
 	s.GoBody.Pn("    P unsafe.Pointer")
 	s.GoBody.Pn("}")
+
+	size := ui.Size()
+	if size > 0 {
+		s.GoBody.Pn("const SizeOfUnion%v = %v", name, size)
+	}
 
 	numMethod := ui.NumMethod()
 	for i := 0; i < numMethod; i++ {
