@@ -227,6 +227,9 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 		value.Unref()
 	}
 	s.GoBody.Pn(")") // end const
+
+	// NOTE: enum 和 flags 也有类型的
+	pGetTypeFunc(s, name)
 }
 
 func pStruct(s *SourceFile, si *gi.StructInfo) {
@@ -262,11 +265,25 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 		s.GoBody.Pn("const SizeOfStruct%v = %v", name, size)
 	}
 
+	pGetTypeFunc(s, name)
+
 	numMethod := si.NumMethod()
 	for i := 0; i < numMethod; i++ {
 		fi := si.Method(i)
 		pFunction(s, fi)
 	}
+}
+
+// 给 XXXGetType 用的 id
+var globalGetTypeNextId uint
+
+func pGetTypeFunc(s *SourceFile, name string) {
+	s.GoBody.Pn("func %sGetType() gi.GType {", name)
+	s.GoBody.Pn("ret := _I.GetGType(%v, %q)", globalGetTypeNextId, name)
+	s.GoBody.Pn("return ret")
+	s.GoBody.Pn("}")
+
+	globalGetTypeNextId++
 }
 
 func pUnion(s *SourceFile, ui *gi.UnionInfo) {
@@ -280,6 +297,8 @@ func pUnion(s *SourceFile, ui *gi.UnionInfo) {
 	if size > 0 {
 		s.GoBody.Pn("const SizeOfUnion%v = %v", name, size)
 	}
+
+	pGetTypeFunc(s, name)
 
 	numMethod := ui.NumMethod()
 	for i := 0; i < numMethod; i++ {
@@ -297,6 +316,8 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 	s.GoBody.Pn("}") // end struct
 
 	s.GoBody.Pn("type %sIfc struct{}", name)
+
+	pGetTypeFunc(s, name)
 
 	numMethod := ii.NumMethod()
 	for i := 0; i < numMethod; i++ {
@@ -341,6 +362,8 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	s.GoBody.P("type I%s interface {", name)
 	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
 	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
+
+	pGetTypeFunc(s, name)
 
 	numMethod := oi.NumMethod()
 	for i := 0; i < numMethod; i++ {

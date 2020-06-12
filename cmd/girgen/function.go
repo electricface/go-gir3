@@ -223,15 +223,19 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
-
-			if dir == gi.DIRECTION_OUT && isCallerAlloc {
-				// numInArgs++
+			var asRet bool
+			if dir == gi.DIRECTION_INOUT {
+				asRet = true
 			} else {
-				numOutArgs++
+				// dir out
+				asRet = shouldArgAsReturn(argTypeInfo, isCallerAlloc)
 			}
 
-			if varOutArgs == "" {
-				varOutArgs = varReg.alloc("outArgs")
+			if asRet {
+				numOutArgs++
+				if varOutArgs == "" {
+					varOutArgs = varReg.alloc("outArgs")
+				}
 			}
 		}
 
@@ -606,6 +610,28 @@ type parseArgTypeDirOutResult struct {
 	isRet          bool // 是否作为返回值
 }
 
+func shouldArgAsReturn(ti *gi.TypeInfo, isCallerAlloc bool) bool {
+	result := true
+	tag := ti.Tag()
+	switch tag {
+	case gi.TYPE_TAG_INTERFACE:
+		bi := ti.Interface()
+		biType := bi.Type()
+		if isCallerAlloc {
+			if biType == gi.INFO_TYPE_STRUCT {
+				result = false
+			}
+		}
+		bi.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		if isCallerAlloc {
+			result = false
+		}
+	}
+	return result
+}
+
 func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 	isCallerAlloc bool) *parseArgTypeDirOutResult {
 
@@ -718,57 +744,90 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 	case gi.TYPE_TAG_ARRAY:
 		arrType := ti.ArrayType()
 		lenArgIdx := ti.ArrayLength()
-		if arrType == gi.ARRAY_TYPE_C {
 
-			elemTypeInfo := ti.ParamType(0)
-			elemTypeTag := elemTypeInfo.Tag()
-			type0 = getDebugType("array type c, elemTypeTag: %v", elemTypeTag)
+		if isCallerAlloc {
+			isRet = false
+			// type
+			// expr 用于 newArgExpr， arg_param := gi.NewPointerArgument($expr)
+			type0 = "unsafe.Pointer /*TODO:TYPE*/"
+			expr = paramName + "/*TODO*/"
 
-			elemType := getArgumentType(elemTypeTag)
-			if elemType != "" && !elemTypeInfo.IsPointer() {
-				type0 = "gi." + elemType + "Array"
-				expr = "Pointer()"
-				field = ".P"
-
-				if lenArgIdx >= 0 {
-					lenArgName := varReg.getParam(lenArgIdx)
-					beforeRetLines = append(beforeRetLines,
-						fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
+			if arrType == gi.ARRAY_TYPE_C {
+				elemTypeInfo := ti.ParamType(0)
+				elemTypeTag := elemTypeInfo.Tag()
+				type0 = fmt.Sprintf("unsafe.Pointer /*TODO array type c, elemTypeTag: %v*/", elemTypeTag)
+				elemType := getArgumentType(elemTypeTag)
+				if elemType != "" && !elemTypeInfo.IsPointer() {
+					type0 = "gi." + elemType + "Array"
+					expr = paramName + ".P"
+				} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+					type0 = "gi.CStrArray"
+					expr = paramName + ".P"
+				} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
+					type0 = "gi.PointerArray"
+					expr = paramName + ".P"
+				} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+					type0 = "unsafe.Pointer"
+					expr = paramName
 				}
 
-			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
-				type0 = "gi.CStrArray"
-				expr = "Pointer()"
-				field = ".P"
-			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
-				type0 = "gi.PointerArray"
-				expr = "Pointer()"
-				field = ".P"
-
-				if lenArgIdx >= 0 {
-					lenArgName := varReg.getParam(lenArgIdx)
-					beforeRetLines = append(beforeRetLines,
-						fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
-				} else {
-					beforeRetLines = append(beforeRetLines,
-						fmt.Sprintf("%v.Len = -1", paramName))
-
-					// 注意: 可能不一定是 Zero Term 的
-					beforeRetLines = append(beforeRetLines,
-						fmt.Sprintf("%v.SetLenZT()", paramName))
-				}
-			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
-				type0 = "unsafe.Pointer"
-				expr = "Pointer()"
+				elemTypeInfo.Unref()
 			}
 
-			elemTypeInfo.Unref()
+		} else {
+			if arrType == gi.ARRAY_TYPE_C {
 
-		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
-			type0 = getGLibType("ByteArray")
-			expr = "Pointer()"
-			field = ".P"
+				elemTypeInfo := ti.ParamType(0)
+				elemTypeTag := elemTypeInfo.Tag()
+				type0 = getDebugType("array type c, elemTypeTag: %v", elemTypeTag)
+
+				elemType := getArgumentType(elemTypeTag)
+				if elemType != "" && !elemTypeInfo.IsPointer() {
+					type0 = "gi." + elemType + "Array"
+					expr = "Pointer()"
+					field = ".P"
+
+					if lenArgIdx >= 0 {
+						lenArgName := varReg.getParam(lenArgIdx)
+						beforeRetLines = append(beforeRetLines,
+							fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
+					}
+
+				} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+					type0 = "gi.CStrArray"
+					expr = "Pointer()"
+					field = ".P"
+				} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
+					type0 = "gi.PointerArray"
+					expr = "Pointer()"
+					field = ".P"
+
+					if lenArgIdx >= 0 {
+						lenArgName := varReg.getParam(lenArgIdx)
+						beforeRetLines = append(beforeRetLines,
+							fmt.Sprintf("%v.Len = int(%v)", paramName, lenArgName))
+					} else {
+						beforeRetLines = append(beforeRetLines,
+							fmt.Sprintf("%v.Len = -1", paramName))
+
+						// 注意: 可能不一定是 Zero Term 的
+						beforeRetLines = append(beforeRetLines,
+							fmt.Sprintf("%v.SetLenZT()", paramName))
+					}
+				} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+					type0 = "unsafe.Pointer"
+					expr = "Pointer()"
+				}
+
+				elemTypeInfo.Unref()
+
+			} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
+				type0 = getGLibType("ByteArray")
+				expr = "Pointer()"
+				field = ".P"
+			}
 		}
+
 	}
 
 	return &parseArgTypeDirOutResult{

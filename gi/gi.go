@@ -203,7 +203,7 @@ func ToVFuncInfo(bil BaseInfoLike) *VFuncInfo {
 	return (*VFuncInfo)(unsafe.Pointer(bil.inheritedFromBaseInfo()))
 }
 
-func ToRegisteredType(bil BaseInfoLike) *RegisteredType {
+func ToRegisteredTypeInfo(bil BaseInfoLike) *RegisteredTypeInfo {
 	_ExpectBaseInfoType(bil,
 		INFO_TYPE_BOXED,
 		INFO_TYPE_ENUM,
@@ -212,7 +212,7 @@ func ToRegisteredType(bil BaseInfoLike) *RegisteredType {
 		INFO_TYPE_OBJECT,
 		INFO_TYPE_STRUCT,
 		INFO_TYPE_UNION)
-	return (*RegisteredType)(unsafe.Pointer(bil.inheritedFromBaseInfo()))
+	return (*RegisteredTypeInfo)(unsafe.Pointer(bil.inheritedFromBaseInfo()))
 }
 
 func ToEnumInfo(bil BaseInfoLike) *EnumInfo {
@@ -1143,33 +1143,37 @@ func (vfi *VFuncInfo) Invoker() *FunctionInfo {
 }
 
 //------------------------------------------------------------------------------
-// RegisteredType
+// RegisteredTypeInfo
 //------------------------------------------------------------------------------
 
-type RegisteredType struct {
+type RegisteredTypeInfo struct {
 	BaseInfo
 }
 
 // g_registered_type_info_get_type_name
-func (rt *RegisteredType) TypeName() string {
+func (rt *RegisteredTypeInfo) TypeName() string {
 	ret := C.g_registered_type_info_get_type_name((*C.GIRegisteredTypeInfo)(rt.c))
 	return _GStringToGoString(ret)
 }
 
 // g_registered_type_info_get_type_init
-func (rt *RegisteredType) TypeInit() string {
+func (rt *RegisteredTypeInfo) TypeInit() string {
 	ret := C.g_registered_type_info_get_type_init((*C.GIRegisteredTypeInfo)(rt.c))
 	return _GStringToGoString(ret)
 }
 
 //GType               g_registered_type_info_get_g_type   (GIRegisteredTypeInfo *info);
+func (rt *RegisteredTypeInfo) GetGType() GType {
+	ret := C.g_registered_type_info_get_g_type((*C.GIRegisteredTypeInfo)(rt.c))
+	return GType(ret)
+}
 
 //------------------------------------------------------------------------------
 // EnumInfo
 //------------------------------------------------------------------------------
 
 type EnumInfo struct {
-	RegisteredType
+	RegisteredTypeInfo
 }
 
 type ValueInfo struct {
@@ -1217,7 +1221,7 @@ func (vi *ValueInfo) Value() int64 {
 //------------------------------------------------------------------------------
 
 type InterfaceInfo struct {
-	RegisteredType
+	RegisteredTypeInfo
 }
 
 // g_interface_info_get_n_prerequisites
@@ -1328,7 +1332,7 @@ func (ii *InterfaceInfo) FindVFunc(name string) *VFuncInfo {
 //------------------------------------------------------------------------------
 
 type ObjectInfo struct {
-	RegisteredType
+	RegisteredTypeInfo
 }
 
 // g_object_info_get_type_name
@@ -1518,7 +1522,7 @@ func (oi *ObjectInfo) GetValueFunction() string {
 //------------------------------------------------------------------------------
 
 type StructInfo struct {
-	RegisteredType
+	RegisteredTypeInfo
 }
 
 // g_struct_info_get_n_fields
@@ -1581,7 +1585,7 @@ func (si *StructInfo) IsForeign() bool {
 //------------------------------------------------------------------------------
 
 type UnionInfo struct {
-	RegisteredType
+	RegisteredTypeInfo
 }
 
 // g_union_info_get_n_fields

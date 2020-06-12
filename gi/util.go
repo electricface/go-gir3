@@ -2,6 +2,7 @@ package gi
 
 import (
 	"fmt"
+	"os"
 	"sync"
 )
 
@@ -9,12 +10,14 @@ type InvokerCache struct {
 	namespace string
 	mu        sync.RWMutex
 	m         map[uint]Invoker
+	typeMap   map[uint]GType
 }
 
 func NewInvokerCache(ns string) *InvokerCache {
 	return &InvokerCache{
 		namespace: ns,
 		m:         make(map[uint]Invoker),
+		typeMap:   make(map[uint]GType),
 	}
 }
 
@@ -24,10 +27,37 @@ func (ic *InvokerCache) put(id uint, invoker Invoker) {
 	ic.mu.Unlock()
 }
 
+func (ic *InvokerCache) putGType(id uint, gType GType) {
+	ic.mu.Lock()
+	ic.typeMap[id] = gType
+	ic.mu.Unlock()
+}
+
 var defaultRepo = getDefaultRepository()
 
 func DefaultRepository() *Repository {
 	return defaultRepo
+}
+
+func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
+	ic.mu.RLock()
+	gType, ok := ic.typeMap[id]
+	ic.mu.RUnlock()
+	if ok {
+		return gType
+	}
+
+	bi := defaultRepo.FindByName(ic.namespace, typeName)
+	if bi.IsNil() {
+		_, _ = fmt.Fprintf(os.Stderr, "not found type %v in namespace %v", typeName, ic.namespace)
+		return 0
+	}
+	defer bi.Unref()
+
+	rti := ToRegisteredTypeInfo(bi)
+	gType = rti.GetGType()
+	ic.putGType(id, gType)
+	return gType
 }
 
 func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
