@@ -118,7 +118,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	argIdxStart := 0
 	if container != nil {
 		addReceiver := false
-		log.Println("container is not nil")
 		b.Pn("// container is not nil, container is %s", container.Name())
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 			// 表示 C 函数是构造器

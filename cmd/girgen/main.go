@@ -20,6 +20,7 @@ var optVersion string
 var optDir string
 
 func init() {
+	log.SetFlags(log.Lshortfile)
 	flag.StringVar(&optNamespace, "n", "", "namespace")
 	flag.StringVar(&optVersion, "v", "", "version")
 	flag.StringVar(&optDir, "d", "", "output directory")
@@ -76,6 +77,11 @@ func main() {
 	sourceFile := NewSourceFile(pkg)
 	globalSourceFile = sourceFile
 
+	if optNamespace == "GLib" {
+		sourceFile.AddCInclude("<glib.h>")
+		sourceFile.AddCPkg("glib-2.0")
+	}
+
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
 	sourceFile.AddGoImport("unsafe")
 	sourceFile.AddGoImport("log")
@@ -110,37 +116,32 @@ func main() {
 
 	for i := 0; i < numInfos; i++ {
 		bi := repo.Info(optNamespace, i)
-		name := bi.Name()
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
-			log.Println(name, "FUNCTION")
 			fi := gi.ToFunctionInfo(bi)
 			pFunction(sourceFile, fi)
 		case gi.INFO_TYPE_CALLBACK:
+			ci := gi.ToCallableInfo(bi)
+			pCallback(sourceFile, ci)
 		case gi.INFO_TYPE_STRUCT:
-			log.Println(name, "STRUCT")
 			si := gi.ToStructInfo(bi)
 			pStruct(sourceFile, si)
 
 		case gi.INFO_TYPE_BOXED:
 			// TODO 什么是 BOXED?
 		case gi.INFO_TYPE_ENUM:
-			log.Println(name, "ENUM")
 			ei := gi.ToEnumInfo(bi)
 			pEnum(sourceFile, ei, true)
 
 		case gi.INFO_TYPE_FLAGS:
-			log.Println(name, "FLAGS")
 			ei := gi.ToEnumInfo(bi)
 			pEnum(sourceFile, ei, false)
 
 		case gi.INFO_TYPE_OBJECT:
-			log.Println(name, "OBJECT")
 			oi := gi.ToObjectInfo(bi)
 			pObject(sourceFile, oi)
 
 		case gi.INFO_TYPE_INTERFACE:
-			log.Println(name, "INTERFACE")
 			ii := gi.ToInterfaceInfo(bi)
 			pInterface(sourceFile, ii)
 
@@ -148,7 +149,6 @@ func main() {
 			ci := gi.ToConstantInfo(bi)
 			constants = pConstant(constants, ci)
 		case gi.INFO_TYPE_UNION:
-			log.Println(name, "UNION")
 			ui := gi.ToUnionInfo(bi)
 			pUnion(sourceFile, ui)
 
