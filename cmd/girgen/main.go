@@ -317,6 +317,10 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 
 	s.GoBody.Pn("type %sIfc struct{}", name)
 
+	s.GoBody.P("type I%s interface {", name)
+	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
+	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
+
 	pGetTypeFunc(s, name)
 
 	numMethod := ii.NumMethod()
@@ -362,6 +366,13 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	s.GoBody.P("type I%s interface {", name)
 	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
 	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
+
+	for i := 0; i < numIfcs; i++ {
+		ii := oi.Interface(i)
+		ifcTypeName := ii.Name()
+		s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, ifcTypeName)
+		ii.Unref()
+	}
 
 	pGetTypeFunc(s, name)
 

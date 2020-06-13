@@ -917,6 +917,18 @@ func getArgumentType(tag gi.TypeTag) (str string) {
 	return
 }
 
+// addPrefixIForType 给类型加上 I 前缀，换成接口类型。
+func addPrefixIForType(type0 string) string {
+	if strings.Contains(type0, ".") {
+		// gobject.Object => gobject.IObject
+		type0 = strings.Replace(type0, ".", ".I", 1)
+	} else {
+		// Object => IObject
+		type0 = "I" + type0
+	}
+	return type0
+}
+
 type parseArgTypeDirInResult struct {
 	newArgExpr     string   // 创建 Argument 的表达式，比如 gi.NewIntArgument()
 	type0          string   // 目标函数形参中的类型
@@ -984,14 +996,9 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			type0 = getTypeName(bi)
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
 
-			if bi.Type() == gi.INFO_TYPE_OBJECT {
-				if strings.Contains(type0, ".") {
-					// gobject.Object => gobject.IObject
-					type0 = strings.Replace(type0, ".", ".I", 1)
-				} else {
-					// Object => IObject
-					type0 = "I" + type0
-				}
+			biType := bi.Type()
+			if biType == gi.INFO_TYPE_OBJECT || biType == gi.INFO_TYPE_INTERFACE {
+				type0 = addPrefixIForType(type0)
 
 				// 生成检查接口变量是否为 nil 的代码。如果不处理接口变量为 nil, 那么如果接口变量为 nil，
 				// 则会导致 $varArg.P_XXX() 这里 panic。
