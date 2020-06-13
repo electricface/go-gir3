@@ -4,7 +4,29 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"unsafe"
 )
+
+var funcNextId uint
+var funcMap = make(map[uint]func(interface{}))
+var funcMapMu sync.RWMutex
+
+func RegisterFunc(fn func(v interface{})) unsafe.Pointer {
+	funcMapMu.Lock()
+	defer funcMapMu.Unlock()
+
+	id := funcNextId
+	funcMap[id] = fn
+	funcNextId++
+	return unsafe.Pointer(uintptr(unsafe.Pointer(nil)) + uintptr(id))
+}
+
+func GetFunc(id uint) func(interface{}) {
+	funcMapMu.RLock()
+	fn := funcMap[id]
+	funcMapMu.RUnlock()
+	return fn
+}
 
 type InvokerCache struct {
 	namespace string

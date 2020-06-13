@@ -33,5 +33,8 @@ gdk-pixbuf-2.0:
 gtk-3.0:
 	./girgen -n Gtk -v 3.0
 
+gtksource-4:
+	./girgen -n GtkSource -v 4
+
 .PHONY: girgen
 

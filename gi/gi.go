@@ -727,7 +727,6 @@ func (ci *ConstantInfo) Value() interface{} {
 		return C.GoString(*(**C.char)(unsafe.Pointer(&arg)))
 	}
 	panic("unsupported constant value")
-	return nil
 }
 
 //gint                g_constant_info_get_value           (GIConstantInfo *info,
