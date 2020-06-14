@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/electricface/go-gir3/cmd/girgen/xmlp"
 	"github.com/electricface/go-gir3/gi"
 )
 
@@ -98,11 +99,17 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 
 	cgoType := "C.gpointer"
 	cType := "gpointer"
-	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO tag: %v, isPtr: %v*/", tag, isPtr)
+	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB tag: %v, isPtr: %v*/", tag, isPtr)
 	expr := fmt.Sprintf("unsafe.Pointer(%v)", paramName)
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
+		if isPtr {
+			cgoType = "*C.gchar"
+			cType = "gchar*"
+			goType = "string"
+			expr = fmt.Sprintf("gi.GoString(unsafe.Pointer(%v))", paramName)
+		}
 
 	case gi.TYPE_TAG_BOOLEAN,
 		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
@@ -111,6 +118,15 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
 		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
 		// 简单类型
+		if !isPtr {
+			cType = getCTypeWithTag(tag)
+			cgoType = "C." + cType
+			goType = getTypeWithTag(tag)
+			expr = fmt.Sprintf("%v(%v)", goType, paramName)
+			if tag == gi.TYPE_TAG_BOOLEAN {
+				expr = fmt.Sprintf("gi.Int2Bool(int(%v))", paramName)
+			}
+		}
 
 	case gi.TYPE_TAG_VOID:
 		if isPtr {
@@ -119,6 +135,28 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 			goType = "unsafe.Pointer"
 			expr = fmt.Sprintf("unsafe.Pointer(%v)", paramName)
 		}
+
+	case gi.TYPE_TAG_INTERFACE:
+		ii := argTypeInfo.Interface()
+		ifcType := ii.Type()
+		if ifcType == gi.INFO_TYPE_ENUM || ifcType == gi.INFO_TYPE_FLAGS {
+			if !isPtr {
+				identPrefix := getCIdentifierPrefix(ii)
+				name := ii.Name()
+				cType = identPrefix + name
+				cgoType = "C." + cType
+
+				name = getTypeName(ii) // 加上可能的包前缀
+				if ifcType == gi.INFO_TYPE_ENUM {
+					goType = getEnumTypeName(name)
+				} else {
+					// flags
+					goType = getFlagsTypeName(name)
+				}
+				expr = fmt.Sprintf("%v(%v)", goType, paramName)
+			}
+		}
+		ii.Unref()
 	}
 	return &parseCbArgTypeDirInResult{
 		cType:   cType,
@@ -126,4 +164,50 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 		goType:  goType,
 		expr:    expr,
 	}
+}
+
+func getCIdentifierPrefix(bi *gi.BaseInfo) string {
+	ns := bi.Namespace()
+
+	if ns == globalXRepo.Namespace.Name {
+		return globalXRepo.Namespace.CIdentifierPrefixes
+	}
+
+	repo := xmlp.GetLoadedRepo(ns)
+	return repo.Namespace.CIdentifierPrefixes
+}
+
+func getCTypeWithTag(tag gi.TypeTag) (type0 string) {
+	switch tag {
+	case gi.TYPE_TAG_BOOLEAN:
+		type0 = "gboolean" // typedef gint gboolean
+	case gi.TYPE_TAG_INT8:
+		type0 = "gint8"
+	case gi.TYPE_TAG_UINT8:
+		type0 = "guint8"
+
+	case gi.TYPE_TAG_INT16:
+		type0 = "gint16"
+	case gi.TYPE_TAG_UINT16:
+		type0 = "guint16"
+
+	case gi.TYPE_TAG_INT32:
+		type0 = "gint32"
+	case gi.TYPE_TAG_UINT32:
+		type0 = "guint32"
+
+	case gi.TYPE_TAG_INT64:
+		type0 = "gint64"
+	case gi.TYPE_TAG_UINT64:
+		type0 = "guint64"
+
+	case gi.TYPE_TAG_FLOAT:
+		type0 = "gfloat"
+	case gi.TYPE_TAG_DOUBLE:
+		type0 = "gdouble"
+
+	case gi.TYPE_TAG_UNICHAR:
+		type0 = "gunichar" // typedef guint32 gunichar
+	}
+	return
 }

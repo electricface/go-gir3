@@ -32,6 +32,7 @@ var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value
 var globalDeps []string
 var globalCfg *config
 var globalSourceFile *SourceFile
+var globalXRepo *xmlp.Repository
 
 func getGoPath() string {
 	gopath := os.Getenv("GOPATH")
@@ -70,6 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	globalXRepo = xRepo
 
 	deps := getAllDeps(repo, optNamespace)
 	log.Printf("deps: %#v\n", deps)
