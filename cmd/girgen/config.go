@@ -7,7 +7,8 @@ import (
 )
 
 type config struct {
-	Black []string `json:"black"`
+	Black     []string `json:"black"`
+	CIncludes []string `json:"cIncludes"`
 }
 
 func loadConfig(filename string, cfg *config) error {

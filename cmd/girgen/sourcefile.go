@@ -14,7 +14,7 @@ import (
 
 type SourceFile struct {
 	Pkg       string
-	CPkgs     []string
+	CPkgList  []string
 	CIncludes []string
 	CHeader   *SourceBody
 	CBody     *SourceBody
@@ -73,7 +73,7 @@ func (s *SourceFile) writeTo(w io.Writer) error {
 		return err
 	}
 
-	if len(s.CPkgs) > 0 ||
+	if len(s.CPkgList) > 0 ||
 		len(s.CIncludes) > 0 ||
 		len(s.CHeader.buf.Bytes()) > 0 ||
 		len(s.CBody.buf.Bytes()) > 0 {
@@ -82,8 +82,9 @@ func (s *SourceFile) writeTo(w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if len(s.CPkgs) != 0 {
-			str := "#cgo pkg-config: " + strings.Join(s.CPkgs, " ") + "\n"
+		if len(s.CPkgList) > 0 {
+			sort.Strings(s.CPkgList)
+			str := "#cgo pkg-config: " + strings.Join(s.CPkgList, " ") + "\n"
 			_, err = io.WriteString(w, str)
 			if err != nil {
 				return err
@@ -129,8 +130,13 @@ func (s *SourceFile) writeTo(w io.Writer) error {
 	return err
 }
 
-func (s *SourceFile) AddCPkg(pkg string) {
-	s.CPkgs = append(s.CPkgs, pkg)
+func (s *SourceFile) AddCPkg(cPkg string) {
+	for _, cPkg0 := range s.CPkgList {
+		if cPkg0 == cPkg {
+			return
+		}
+	}
+	s.CPkgList = append(s.CPkgList, cPkg)
 }
 
 func (s *SourceFile) AddCInclude(inc string) {

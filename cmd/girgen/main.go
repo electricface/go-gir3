@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/electricface/go-gir3/cmd/girgen/xmlp"
 	"github.com/electricface/go-gir3/gi"
 )
 
@@ -65,6 +66,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	xRepo, err := xmlp.Load(optNamespace, optVersion)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	deps := getAllDeps(repo, optNamespace)
 	log.Printf("deps: %#v\n", deps)
@@ -77,9 +82,15 @@ func main() {
 	sourceFile := NewSourceFile(pkg)
 	globalSourceFile = sourceFile
 
-	if optNamespace == "GLib" {
-		sourceFile.AddCInclude("<glib.h>")
-		sourceFile.AddCPkg("glib-2.0")
+	for _, cInclude := range xRepo.CIncludes() {
+		sourceFile.AddCInclude("<" + cInclude.Name + ">")
+	}
+	for _, cInclude := range cfg.CIncludes {
+		sourceFile.AddCInclude(cInclude)
+	}
+
+	for _, pkg := range xRepo.Packages {
+		sourceFile.AddCPkg(pkg.Name)
 	}
 
 	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
