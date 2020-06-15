@@ -1097,11 +1097,14 @@ func isSameNamespace(ns string) bool {
 }
 
 func getTypeName(bi *gi.BaseInfo) string {
-	ns := bi.Namespace()
-	if isSameNamespace(ns) {
-		return bi.Name()
-	}
+	pkgPrefix := getPkgPrefix(bi.Namespace())
+	return pkgPrefix + bi.Name()
+}
 
+func getPkgPrefix(ns string) string {
+	if isSameNamespace(ns) {
+		return ""
+	}
 	pkgBase := ""
 	for _, dep := range globalDeps {
 		if strings.HasPrefix(dep, ns+"-") {
@@ -1110,11 +1113,11 @@ func getTypeName(bi *gi.BaseInfo) string {
 		}
 	}
 
-	typeName := strings.ToLower(ns) + "." + bi.Name()
+	ret := strings.ToLower(ns) + "."
 	if pkgBase != "" {
 		globalSourceFile.AddGirImport(pkgBase)
 	}
-	return typeName
+	return ret
 }
 
 func addGirImport(ns string) {

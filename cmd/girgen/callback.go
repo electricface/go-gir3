@@ -126,6 +126,19 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 			if tag == gi.TYPE_TAG_BOOLEAN {
 				expr = fmt.Sprintf("gi.Int2Bool(int(%v))", paramName)
 			}
+		} else {
+			cType = getCTypeWithTag(tag) + "*"
+			cgoType = "*C." + getCTypeWithTag(tag)
+			goType = "*" + getTypeWithTag(tag)
+			expr = fmt.Sprintf("(%v)(unsafe.Pointer(%v))", goType, paramName)
+		}
+
+	case gi.TYPE_TAG_UNICHAR:
+		if !isPtr {
+			cType = "gunichar"
+			cgoType = "C.gunichar"
+			goType = "rune"
+			expr = fmt.Sprintf("rune(%v)", paramName)
 		}
 
 	case gi.TYPE_TAG_VOID:
@@ -155,8 +168,53 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 				}
 				expr = fmt.Sprintf("%v(%v)", goType, paramName)
 			}
+		} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
+			ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
+			if isPtr {
+				identPrefix := getCIdentifierPrefix(ii)
+				name := ii.Name()
+				cType = identPrefix + name + "*"
+				cgoType = "*C." + identPrefix + name
+
+				goType = getTypeName(ii)
+				expr = fmt.Sprintf("%v{P: unsafe.Pointer(%v) }", goType, paramName)
+				if ifcType == gi.INFO_TYPE_OBJECT {
+					expr = fmt.Sprintf("%vWrap%v(unsafe.Pointer(%v))",
+						getPkgPrefix(ii.Namespace()), name, paramName)
+				}
+			}
 		}
 		ii.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		arrType := argTypeInfo.ArrayType()
+		if arrType == gi.ARRAY_TYPE_C {
+			elemTypeInfo := argTypeInfo.ParamType(0)
+			elemTypeTag := elemTypeInfo.Tag()
+
+			elemType := getArgumentType(elemTypeTag)
+			if elemType != "" && !elemTypeInfo.IsPointer() {
+				cgoType = "C.gpointer"
+				cType = "gpointer"
+				goType = "gi." + elemType + "Array"
+				expr = fmt.Sprintf("%s{P: %v}", goType, paramName)
+				// TODO length
+
+			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+				goType = "unsafe.Pointer"
+				cType = "gpointer"
+				cgoType = "C.gpointer"
+				expr = fmt.Sprintf("unsafe.Pointer(%v)", paramName)
+			}
+
+			elemTypeInfo.Unref()
+		}
+
+	case gi.TYPE_TAG_ERROR:
+		cType = "GError**"
+		cgoType = "**C.GError"
+		goType = "unsafe.Pointer"
+		expr = fmt.Sprintf("unsafe.Pointer(%v)", paramName)
 	}
 	return &parseCbArgTypeDirInResult{
 		cType:   cType,
