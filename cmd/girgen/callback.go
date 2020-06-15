@@ -197,7 +197,7 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 				cgoType = "C.gpointer"
 				cType = "gpointer"
 				goType = "gi." + elemType + "Array"
-				expr = fmt.Sprintf("%s{P: %v}", goType, paramName)
+				expr = fmt.Sprintf("%s{P: unsafe.Pointer(%v)}", goType, paramName)
 				// TODO length
 
 			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
