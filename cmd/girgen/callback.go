@@ -46,17 +46,38 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 			fieldSetLines = append(fieldSetLines, fieldSetLine)
 
 		case gi.DIRECTION_OUT:
+			parseResult := parseCbArgTypeDirOut(paramName, argTypeInfo)
+			paramNameTypes = append(paramNameTypes, paramName+" "+parseResult.cgoType)
+			cParamTypeNames = append(cParamTypeNames, parseResult.cType+" "+paramName)
+
+			fieldName := "F_" + paramName
+			fields = append(fields, fieldName+" "+parseResult.goType)
+
+			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
+			fieldSetLines = append(fieldSetLines, fieldSetLine)
+
 		case gi.DIRECTION_INOUT:
+			parseResult := parseCbArgTypeDirInOut(paramName, argTypeInfo)
+			paramNameTypes = append(paramNameTypes, paramName+" "+parseResult.cgoType)
+			cParamTypeNames = append(cParamTypeNames, parseResult.cType+" "+paramName)
+
+			fieldName := "F_" + paramName
+			fields = append(fields, fieldName+" "+parseResult.goType)
+
+			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
+			fieldSetLines = append(fieldSetLines, fieldSetLine)
 		}
 
 		argTypeInfo.Unref()
 		argInfo.Unref()
 	}
 
-	if !foundUserData {
-		s.GoBody.Pn("// ignore callback %v", name)
-		return
-	}
+	myFuncName := "my" + optNamespace + name
+
+	s.CBody.Pn("extern void %s(%v);", myFuncName, strings.Join(cParamTypeNames, ", "))
+	s.CBody.Pn("static void* getPointer_%v() {", myFuncName)
+	s.CBody.Pn("return (void*)(%v);", myFuncName)
+	s.CBody.Pn("}")
 
 	s.GoBody.Pn("type %vStruct struct {", name)
 	for _, field := range fields {
@@ -64,26 +85,79 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	}
 	s.GoBody.Pn("}")
 
-	s.GoBody.Pn("//export my%v", name)
-	s.GoBody.Pn("func my%v(%v) {", name, strings.Join(paramNameTypes, ", "))
+	s.GoBody.Pn("func GetPointer_my%v() unsafe.Pointer {", name)
+	s.GoBody.Pn("return unsafe.Pointer(C.getPointer_%v())", myFuncName)
+	s.GoBody.Pn("}")
 
-	s.CBody.Pn("extern void my%s(%v);", name, strings.Join(cParamTypeNames, ", "))
-	s.CBody.Pn("static void* getPointer_my%v() {", name)
-	s.CBody.Pn("return (void*)(my%v);", name)
-	s.CBody.Pn("}")
+	s.GoBody.Pn("//export %v", myFuncName)
+	s.GoBody.Pn("func %v(%v) {", myFuncName, strings.Join(paramNameTypes, ", "))
 
-	varFn := varReg.alloc("fn")
-	s.GoBody.Pn("%v := gi.GetFunc(uint(uintptr(user_data)))", varFn)
-	varArgs := varReg.alloc("args")
-	s.GoBody.Pn("%v := %vStruct{", varArgs, name)
+	if foundUserData {
+		varFn := varReg.alloc("fn")
+		s.GoBody.Pn("%v := gi.GetFunc(uint(uintptr(user_data)))", varFn)
+		varArgs := varReg.alloc("args")
+		s.GoBody.Pn("%v := &%vStruct{", varArgs, name)
+		for _, line := range fieldSetLines {
+			s.GoBody.Pn(line)
+		}
 
-	for _, line := range fieldSetLines {
-		s.GoBody.Pn(line)
+		s.GoBody.Pn("}") // end struct
+		s.GoBody.Pn("%v(%v)", varFn, varArgs)
+	} else {
+		// 没有 user_data 参数
+		// TODO
+		s.GoBody.Pn("// TODO: not found user_data")
 	}
 
-	s.GoBody.Pn("}") // end struct
-	s.GoBody.Pn("%v(%v)", varFn, varArgs)
 	s.GoBody.Pn("}") // end func
+}
+
+type parseCbArgTypeDirInOutResult struct {
+	cgoType string
+	cType   string
+	goType  string
+	expr    string
+}
+
+func parseCbArgTypeDirInOut(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArgTypeDirInOutResult {
+	tag := argTypeInfo.Tag()
+	isPtr := argTypeInfo.IsPointer()
+
+	cgoType := "C.gpointer"
+	cType := "gpointer"
+	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("unsafe.Pointer(%v)", paramName)
+
+	return &parseCbArgTypeDirInOutResult{
+		cgoType: cgoType,
+		cType:   cType,
+		goType:  goType,
+		expr:    expr,
+	}
+}
+
+type parseCbArgTypeDirOutResult struct {
+	cgoType string
+	cType   string
+	goType  string
+	expr    string
+}
+
+func parseCbArgTypeDirOut(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArgTypeDirOutResult {
+	tag := argTypeInfo.Tag()
+	isPtr := argTypeInfo.IsPointer()
+
+	cgoType := "C.gpointer"
+	cType := "gpointer"
+	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("unsafe.Pointer(%v)", paramName)
+
+	return &parseCbArgTypeDirOutResult{
+		cgoType: cgoType,
+		cType:   cType,
+		goType:  goType,
+		expr:    expr,
+	}
 }
 
 type parseCbArgTypeDirInResult struct {
@@ -173,6 +247,9 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 			if isPtr {
 				identPrefix := getCIdentifierPrefix(ii)
 				name := ii.Name()
+				if identPrefix == "cairo" {
+					name = "_" + strings.ToLower(name) + "_t"
+				}
 				cType = identPrefix + name + "*"
 				cgoType = "*C." + identPrefix + name
 

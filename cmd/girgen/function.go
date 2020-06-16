@@ -1018,6 +1018,10 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			} else if biType == gi.INFO_TYPE_ENUM {
 				type0 = getEnumTypeName(getTypeName(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
+			} else if biType == gi.INFO_TYPE_CALLBACK {
+				type0 = getDebugType("CALLBACK")
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(unsafe.Pointer(%vGetPointer_my%v()))",
+					getPkgPrefix(bi.Namespace()), bi.Name())
 			}
 		}
 		bi.Unref()
