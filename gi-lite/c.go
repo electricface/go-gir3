@@ -33,7 +33,7 @@ import (
 	"unsafe"
 )
 
-type GType C.GType
+type GType uint
 
 func Malloc(n int) unsafe.Pointer {
 	return C.malloc(C.size_t(n))
