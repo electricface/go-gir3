@@ -72,11 +72,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		return
 	}
 
-	b.Pn("// %s", symbol)
 	funcIdx := globalFuncNextIdx
 	globalFuncNextIdx++
 
 	fnName := getFunctionNameFinal(fi)
+
+	var commentLines []string
+	commentLines = append(commentLines, symbol, "")
 
 	// 函数内变量名称分配器
 	var varReg VarReg
@@ -118,21 +120,21 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	argIdxStart := 0
 	if container != nil {
 		addReceiver := false
-		b.Pn("// container is not nil, container is %s", container.Name())
+		//b.Pn("// container is not nil, container is %s", container.Name())
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 			// 表示 C 函数是构造器
-			b.Pn("// is constructor")
+			//b.Pn("// is constructor")
 		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
 			// 表示 C 函数是方法
-			b.Pn("// is method")
+			//b.Pn("// is method")
 			addReceiver = true
 		} else {
 			// 可能 C 函数还是可以作为方法的，只不过没有处理好参数，如果第一个参数是指针类型，就大概率是方法。
 			if fi.NumArg() > 0 {
-				b.Pn("// is method")
+				//b.Pn("// is method")
 				arg0 := fi.Arg(0)
 				arg0Type := arg0.Type()
-				b.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
+				//b.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
 				if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
 					ii := arg0Type.Interface()
 					if ii.Name() == container.Name() {
@@ -149,7 +151,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 					// TODO: 适当消除 1 后缀
 				}
 			} else {
-				b.Pn("// num arg is 0")
+				//b.Pn("// num arg is 0")
 				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
 				// 但是 Go 里没有类的概念，于是直接忽略这个方法了，但任然会为在 namespace 顶层的 io_channel_error_quark 方法自动生成代码。
 				return
@@ -179,8 +181,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 				varArgV, getPtrExpr))
 			argNames = append(argNames, varArgV)
 		}
-	} else {
-		b.Pn("// container is nil")
 	}
 
 	// lenArgMap 是数组长度参数的集合，键是长度参数的 index
@@ -188,7 +188,15 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	numArgs := fi.NumArg()
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
-		varReg.regParam(i, argInfo.Name())
+		paramName := varReg.regParam(i, argInfo.Name())
+
+		paramComment := fmt.Sprintf("[ %v ] trans: %v", paramName, argInfo.OwnershipTransfer())
+		dir := argInfo.Direction()
+		if dir == gi.DIRECTION_OUT || dir == gi.DIRECTION_INOUT {
+			paramComment += fmt.Sprintf(", dir: %v", dir)
+		}
+		commentLines = append(commentLines, paramComment, "")
+
 		argType := argInfo.Type()
 
 		typeTag := argType.Tag()
@@ -196,7 +204,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 			lenArgIdx := argType.ArrayLength()
 			if lenArgIdx >= 0 {
 				lenArgMap[lenArgIdx] = struct{}{}
-				b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
+				//b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
 			}
 		}
 
@@ -210,7 +218,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		lenArgIdx := retTypeInfo.ArrayLength()
 		if lenArgIdx >= 0 {
 			lenArgMap[lenArgIdx] = struct{}{}
-			b.Pn("// ret lenArgIdx %v", lenArgIdx)
+			//b.Pn("// ret lenArgIdx %v", lenArgIdx)
 		}
 	}
 
@@ -263,7 +271,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 		} else if dir == gi.DIRECTION_OUT {
 			// 作为目标函数的返回值之一
-			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg, isCallerAlloc)
+			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg, isCallerAlloc,
+				argInfo.OwnershipTransfer())
 			type0 := parseResult.type0
 			if _, ok := lenArgMap[i]; ok {
 				// 参数是数组的长度
@@ -331,9 +340,16 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		// 有返回值
 		varRet = varReg.alloc("ret")
 		varResult = varReg.alloc("result")
-		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg, fi)
+		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg, fi, fi.CallerOwns())
 		// 把返回值加在 retParams 列表最前面
 		retParams = append([]string{varResult + " " + parseRetTypeResult.type0}, retParams...)
+
+		commentLines = append(commentLines, fmt.Sprintf(
+			"[ %v ] trans: %v", varResult, fi.CallerOwns()), "")
+	}
+
+	for _, line := range commentLines {
+		b.Pn("// %v", line)
 	}
 
 	paramsJoined := strings.Join(params, ", ")
@@ -436,7 +452,9 @@ type parseRetTypeResult struct {
 	zeroTerm bool
 }
 
-func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.FunctionInfo) *parseRetTypeResult {
+func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.FunctionInfo,
+	transfer gi.Transfer) *parseRetTypeResult {
+
 	isPtr := ti.IsPointer()
 	tag := ti.Tag()
 	type0 := getDebugType("isPtr: %v, tag: %v", isPtr, tag)
@@ -450,7 +468,12 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		// 字符串类型
 		// 产生类似如下代码：
 		// result = ret.String().Take()
-		expr = varRet + ".String().Take()"
+		expr = varRet + ".String()"
+		if transfer == gi.TRANSFER_NOTHING {
+			expr += ".Copy()"
+		} else {
+			expr += ".Take()"
+		}
 		type0 = "string"
 
 	case gi.TYPE_TAG_BOOLEAN,
@@ -632,7 +655,7 @@ func shouldArgAsReturn(ti *gi.TypeInfo, isCallerAlloc bool) bool {
 }
 
 func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
-	isCallerAlloc bool) *parseArgTypeDirOutResult {
+	isCallerAlloc bool, transfer gi.Transfer) *parseArgTypeDirOutResult {
 
 	tag := ti.Tag()
 
@@ -649,7 +672,12 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 		// 产生类似如下代码：
 		// outArg1 = &outArgs[0].String().Take()
 		//                       ^--------------
-		expr = "String().Take()"
+		expr = "String()"
+		if transfer == gi.TRANSFER_NOTHING {
+			expr += ".Copy()"
+		} else {
+			expr += ".Take()"
+		}
 		type0 = "string"
 
 	case gi.TYPE_TAG_BOOLEAN,
