@@ -95,7 +95,7 @@ func main() {
 		sourceFile.AddCPkg(pkg.Name)
 	}
 
-	sourceFile.AddGoImport("github.com/electricface/go-gir3/gi")
+	sourceFile.AddGoImport("gi,github.com/electricface/go-gir3/gi-lite")
 	sourceFile.AddGoImport("unsafe")
 	sourceFile.AddGoImport("log")
 
