@@ -3,6 +3,7 @@ package gi
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"sync"
 	"unsafe"
 )
@@ -155,3 +156,14 @@ func Bool2Int(v bool) int {
 	}
 	return 0
 }
+
+type Enum int
+
+type Flags uint
+
+type Long int64
+
+type Ulong uint64
+
+var TypeInt = reflect.TypeOf(0)
+var TypeUint = reflect.TypeOf(uint(0))
