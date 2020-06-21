@@ -13,12 +13,19 @@ var funcMapMu sync.RWMutex
 
 func RegisterFunc(fn func(v interface{})) unsafe.Pointer {
 	funcMapMu.Lock()
-	defer funcMapMu.Unlock()
 
 	id := funcNextId
 	funcMap[id] = fn
 	funcNextId++
+
+	funcMapMu.Unlock()
 	return unsafe.Pointer(uintptr(unsafe.Pointer(nil)) + uintptr(id))
+}
+
+func UnregisterFunc(fnId unsafe.Pointer) {
+	funcMapMu.Lock()
+	delete(funcMap, uint(uintptr(fnId)))
+	funcMapMu.Unlock()
 }
 
 func GetFunc(id uint) func(interface{}) {

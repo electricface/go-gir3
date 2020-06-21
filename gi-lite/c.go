@@ -36,14 +36,20 @@ import (
 type GType uint
 
 func Malloc(n int) unsafe.Pointer {
-	return C.malloc(C.size_t(n))
+	return unsafe.Pointer(C.g_malloc(C.gsize(n)))
 }
 
-func Free(pointer unsafe.Pointer) {
-	if pointer == nil {
+func Malloc0(n int) unsafe.Pointer {
+	return unsafe.Pointer(C.g_malloc0(C.gsize(n)))
+}
+
+func Free(p unsafe.Pointer) {
+	if p == nil {
 		return
 	}
-	C.free(pointer)
+	// 一般情况下 g_free 和 free 是一样的。
+	// C.CString("str") 返回的内存可以用这个函数释放。
+	C.g_free(C.gpointer(p))
 }
 
 // 注意需要 free 这个字符串
