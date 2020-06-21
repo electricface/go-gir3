@@ -53,7 +53,7 @@ func snake2Camel(name string) string {
 	return out.String()
 }
 
-var globalKeywords = []string{
+var _keywords = []string{
 	// Go 语言关键字:
 	"break", "default", "func", "interface", "select",
 	"case", "defer", "go", "map", "struct",
@@ -69,12 +69,12 @@ var globalKeywords = []string{
 	"_I",
 }
 
-var globalKeywordsMap map[string]struct{}
+var _keywordsMap map[string]struct{}
 
 func init() {
-	globalKeywordsMap = make(map[string]struct{})
-	for _, kw := range globalKeywords {
-		globalKeywordsMap[kw] = struct{}{}
+	_keywordsMap = make(map[string]struct{})
+	for _, kw := range _keywords {
+		_keywordsMap[kw] = struct{}{}
 	}
 }
 
@@ -116,7 +116,7 @@ func (vr *VarReg) alloc(prefix string) string {
 		}
 	}
 	if !found {
-		_, ok := globalKeywordsMap[prefix]
+		_, ok := _keywordsMap[prefix]
 		if ok {
 			// 和关键字重名了
 			newVarIdx = 1

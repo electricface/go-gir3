@@ -69,7 +69,7 @@ func DefaultRepository() Repository {
 	return defaultRepo
 }
 
-func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
+func (ic *InvokerCache) GetGType1(id uint, ns, typeName string) GType {
 	ic.mu.RLock()
 	gType, ok := ic.typeMap[id]
 	ic.mu.RUnlock()
@@ -77,7 +77,7 @@ func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
 		return gType
 	}
 
-	bi := defaultRepo.FindByName(ic.namespace, typeName)
+	bi := defaultRepo.FindByName(ns, typeName)
 	if bi.P == nil {
 		_, _ = fmt.Fprintf(os.Stderr, "not found type %v in namespace %v", typeName, ic.namespace)
 		return 0
@@ -90,7 +90,11 @@ func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
 	return gType
 }
 
-func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
+func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
+	return ic.GetGType1(id, ic.namespace, typeName)
+}
+
+func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) {
 	ic.mu.RLock()
 	invoker, ok := ic.m[id]
 	ic.mu.RUnlock()
@@ -98,7 +102,7 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 		return invoker, nil
 	}
 
-	bi := defaultRepo.FindByName(ic.namespace, name)
+	bi := defaultRepo.FindByName(ns, name)
 	if bi.P == nil {
 		return Invoker{}, fmt.Errorf("not found %q in namespace %v", name, ic.namespace)
 	}
@@ -144,6 +148,10 @@ func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
 	}
 	ic.put(id, invoker)
 	return invoker, nil
+}
+
+func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
+	return ic.Get1(id, ic.namespace, name, fnName)
 }
 
 func Int2Bool(v int) bool {

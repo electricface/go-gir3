@@ -16,23 +16,29 @@ import (
 
 const girPkgPath = "github.com/electricface/go-gir"
 
-var optNamespace string
-var optVersion string
-var optDir string
+var _optNamespace string
+var _optVersion string
+var _optDir string
+var _optOutputFile string
+var _optCfgFile string
+var _optPkg string
 
 func init() {
 	log.SetFlags(log.Lshortfile)
-	flag.StringVar(&optNamespace, "n", "", "namespace")
-	flag.StringVar(&optVersion, "v", "", "version")
-	flag.StringVar(&optDir, "d", "", "output directory")
+	flag.StringVar(&_optNamespace, "n", "", "namespace")
+	flag.StringVar(&_optVersion, "v", "", "version")
+	flag.StringVar(&_optDir, "d", "", "output directory")
+	flag.StringVar(&_optOutputFile, "f", "", "output file")
+	flag.StringVar(&_optCfgFile, "c", "", "config file")
+	flag.StringVar(&_optPkg, "p", "", "package")
 }
 
-var globalStructNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
-var globalSymbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
-var globalDeps []string
-var globalCfg *config
-var globalSourceFile *SourceFile
-var globalXRepo *xmlp.Repository
+var _structNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
+var _symbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
+var _deps []string
+var _cfg *config
+var _sourceFile *SourceFile
+var _xRepo *xmlp.Repository
 
 func getGoPath() string {
 	gopath := os.Getenv("GOPATH")
@@ -45,44 +51,85 @@ func getGoPath() string {
 
 func main() {
 	flag.Parse()
-	if optDir == "" {
+	if _optDir == "" {
 		gopath := getGoPath()
 		if gopath == "" {
 			log.Fatal(errors.New("do not set env var GOPATH"))
 		}
-		optDir = filepath.Join(gopath, "src", girPkgPath,
-			strings.ToLower(optNamespace+"-"+optVersion))
+		_optDir = filepath.Join(gopath, "src", girPkgPath,
+			strings.ToLower(_optNamespace+"-"+_optVersion))
 	}
 
-	configFile := filepath.Join(optDir, "config.json")
-	var cfg config
-	err := loadConfig(configFile, &cfg)
+	pkg := strings.ToLower(_optNamespace)
+	if _optPkg != "" {
+		pkg = _optPkg
+	}
+
+	outFile := filepath.Join(_optDir, pkg+"_auto.go")
+	if _optOutputFile != "" {
+		outFile = _optOutputFile
+	}
+	log.Print("outFile:", outFile)
+
+	outDir := filepath.Dir(outFile)
+	err := os.MkdirAll(outDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
-	globalCfg = &cfg
+	genStateFile := filepath.Join(outDir, "genState.json")
+	if _optNamespace == "GObject" || _optNamespace == "Gio" {
+		var gs genState
+		err = loadGenState(genStateFile, &gs)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		nsOrder := []string{"GLib", "GObject", "Gio"}
+		var prevNs string
+		for i, ns := range nsOrder {
+			if ns == _optNamespace {
+				prevNs = nsOrder[i-1]
+			}
+		}
+		if gs.PrevNamespace != prevNs {
+			log.Fatalf("prev namespace is not %v", prevNs)
+		}
+
+		_funcNextIdx = gs.FuncNextId
+		_getTypeNextId = gs.GetTypeNextId
+	}
+
+	configFile := filepath.Join(outDir, "config.json")
+	if _optCfgFile != "" {
+		configFile = filepath.Join(outDir, _optCfgFile)
+	}
+
+	var cfg config
+	err = loadConfig(configFile, &cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_cfg = &cfg
 
 	repo := gi.DefaultRepository()
-	_, err = repo.Require(optNamespace, optVersion, gi.REPOSITORY_LOAD_FLAG_LAZY)
+	_, err = repo.Require(_optNamespace, _optVersion, gi.REPOSITORY_LOAD_FLAG_LAZY)
 	if err != nil {
 		log.Fatal(err)
 	}
-	xRepo, err := xmlp.Load(optNamespace, optVersion)
+	xRepo, err := xmlp.Load(_optNamespace, _optVersion)
 	if err != nil {
 		log.Fatal(err)
 	}
-	globalXRepo = xRepo
+	_xRepo = xRepo
 
-	deps := getAllDeps(repo, optNamespace)
+	deps := getAllDeps(repo, _optNamespace)
 	log.Printf("deps: %#v\n", deps)
-	globalDeps = deps
+	_deps = deps
 
 	//loadedNs := repo.LoadedNamespaces()
 	//log.Println("loadedNs:", loadedNs)
 
-	pkg := strings.ToLower(optNamespace)
 	sourceFile := NewSourceFile(pkg)
-	globalSourceFile = sourceFile
+	_sourceFile = sourceFile
 
 	for _, cInclude := range xRepo.CIncludes() {
 		sourceFile.AddCInclude("<" + cInclude.Name + ">")
@@ -99,36 +146,41 @@ func main() {
 	sourceFile.AddGoImport("unsafe")
 	sourceFile.AddGoImport("log")
 
-	sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", optNamespace)
+	if _optNamespace == "Gio" || _optNamespace == "GObject" {
+		// 不再输出 var _ID
+		sourceFile.GoBody.Pn("var _ gi.GType")
+	} else {
+		sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", _optNamespace)
+	}
 	sourceFile.GoBody.Pn("var _ unsafe.Pointer")
 	sourceFile.GoBody.Pn("var _ *log.Logger")
 	sourceFile.GoBody.Pn("func init() {")
 	sourceFile.GoBody.Pn("repo := gi.DefaultRepository()")
 	sourceFile.GoBody.Pn("_, err := repo.Require(%q, %q, gi.REPOSITORY_LOAD_FLAG_LAZY)",
-		optNamespace, optVersion)
+		_optNamespace, _optVersion)
 	sourceFile.GoBody.Pn("if err != nil {")
 	sourceFile.GoBody.Pn("    panic(err)")
 	sourceFile.GoBody.Pn("}") // end if
 
 	sourceFile.GoBody.Pn("}") // end func
 
-	numInfos := repo.NumInfo(optNamespace)
+	numInfos := repo.NumInfo(_optNamespace)
 	for i := 0; i < numInfos; i++ {
-		bi := repo.Info(optNamespace, i)
+		bi := repo.Info(_optNamespace, i)
 		name := bi.Name()
 		switch bi.Type() {
 		case gi.INFO_TYPE_STRUCT, gi.INFO_TYPE_UNION, gi.INFO_TYPE_OBJECT, gi.INFO_TYPE_INTERFACE:
-			globalStructNamesMap[name] = struct{}{}
+			_structNamesMap[name] = struct{}{}
 		}
 		bi.Unref()
 	}
 
 	// 处理函数命名冲突
-	forEachFunctionInfo(repo, optNamespace, handleFuncNameClash)
+	forEachFunctionInfo(repo, _optNamespace, handleFuncNameClash)
 	var constants []string
 
 	for i := 0; i < numInfos; i++ {
-		bi := repo.Info(optNamespace, i)
+		bi := repo.Info(_optNamespace, i)
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
 			fi := gi.ToFunctionInfo(bi)
@@ -183,16 +235,58 @@ func main() {
 	}
 	sourceFile.GoBody.Pn(")")
 
-	err = os.MkdirAll(optDir, 0755)
-	if err != nil {
-		log.Fatal(err)
+	if _optNamespace == "GLib" || _optNamespace == "GObject" {
+		err = saveGenState(genStateFile, &genState{
+			PrevNamespace: _optNamespace,
+			FuncNextId:    _funcNextIdx,
+			GetTypeNextId: _getTypeNextId,
+		})
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else if _optNamespace == "Gio" {
+		err = os.Remove(genStateFile)
+		if err != nil {
+			log.Println("WARN:", err)
+		}
 	}
-	outFile := filepath.Join(optDir, pkg+"_auto.go")
-	log.Print("outFile:", outFile)
+
+	if _optNamespace == "GLib" || _optNamespace == "Gio" || _optNamespace == "GObject" {
+		// 修正 gio 和 gobject 的 import
+		var temp []string
+		for _, imp := range sourceFile.GoImports {
+			if strings.HasSuffix(imp, "glib-2.0\"") ||
+				strings.HasSuffix(imp, "gobject-2.0\"") {
+				// ignore
+			} else {
+				temp = append(temp, imp)
+			}
+		}
+		sourceFile.GoImports = temp
+	} else {
+		// 修正其它更上层的包（比如 Gdk、Gtk）对 g-2.0 包的导入。
+		var temp []string
+		useG := false
+		for _, imp := range sourceFile.GoImports {
+			if strings.HasSuffix(imp, "glib-2.0\"") ||
+				strings.HasSuffix(imp, "gobject-2.0\"") ||
+				strings.HasSuffix(imp, "gio-2.0\"") {
+				// ignore
+				useG = true
+			} else {
+				temp = append(temp, imp)
+			}
+		}
+		sourceFile.GoImports = temp
+		if useG {
+			sourceFile.AddGirImport("g-2.0")
+		}
+	}
+
 	sourceFile.Save(outFile)
 
-	log.Printf("stat %v TODO/ALL %d/%d %.2f%%\n", optNamespace, globalNumTodoFunc, globalFuncNextIdx,
-		float64(globalNumTodoFunc)/float64(globalFuncNextIdx)*100)
+	log.Printf("stat %v TODO/ALL %d/%d %.2f%%\n", _optNamespace, _numTodoFunc, _numFunc,
+		float64(_numTodoFunc)/float64(_numFunc)*100)
 }
 
 func pConstant(constants []string, ci *gi.ConstantInfo) []string {
@@ -259,7 +353,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 	if strings.HasSuffix(name, "Class") {
 		repo := gi.DefaultRepository()
 		nameRmClass := strings.TrimSuffix(name, "Class")
-		bi := repo.FindByName(optNamespace, nameRmClass)
+		bi := repo.FindByName(_optNamespace, nameRmClass)
 		if !bi.IsNil() {
 			s.GoBody.Pn("// ignore Class struct %s, type of %s is %s",
 				name, nameRmClass, bi.Type())
@@ -288,15 +382,21 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 }
 
 // 给 XXXGetType 用的 id
-var globalGetTypeNextId uint
+var _getTypeNextId int
 
 func pGetTypeFunc(s *SourceFile, name string) {
 	s.GoBody.Pn("func %sGetType() gi.GType {", name)
-	s.GoBody.Pn("ret := _I.GetGType(%v, %q)", globalGetTypeNextId, name)
+
+	if _optNamespace == "GObject" || _optNamespace == "Gio" {
+		s.GoBody.Pn("ret := _I.GetGType1(%v, %q, %q)", _getTypeNextId, _optNamespace, name)
+	} else {
+		s.GoBody.Pn("ret := _I.GetGType(%v, %q)", _getTypeNextId, name)
+	}
+
 	s.GoBody.Pn("return ret")
 	s.GoBody.Pn("}")
 
-	globalGetTypeNextId++
+	_getTypeNextId++
 }
 
 func pUnion(s *SourceFile, ui *gi.UnionInfo) {
@@ -445,8 +545,8 @@ func handleFuncNameClash(fi *gi.FunctionInfo) {
 	symbol := fi.Symbol()
 	fn := getFunctionName(fi)
 
-	if _, ok := globalStructNamesMap[fn]; ok {
+	if _, ok := _structNamesMap[fn]; ok {
 		// 方法名和结构体名冲突了
-		globalSymbolNameMap[symbol] = fn + "F"
+		_symbolNameMap[symbol] = fn + "F"
 	}
 }

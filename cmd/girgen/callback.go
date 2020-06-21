@@ -72,7 +72,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		argInfo.Unref()
 	}
 
-	myFuncName := "my" + optNamespace + name
+	myFuncName := "my" + _optNamespace + name
 
 	s.CBody.Pn("extern void %s(%v);", myFuncName, strings.Join(cParamTypeNames, ", "))
 	s.CBody.Pn("static void* getPointer_%v() {", myFuncName)
@@ -304,8 +304,8 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 func getCIdentifierPrefix(bi *gi.BaseInfo) string {
 	ns := bi.Namespace()
 
-	if ns == globalXRepo.Namespace.Name {
-		return globalXRepo.Namespace.CIdentifierPrefixes
+	if ns == _xRepo.Namespace.Name {
+		return _xRepo.Namespace.CIdentifierPrefixes
 	}
 
 	repo := xmlp.GetLoadedRepo(ns)

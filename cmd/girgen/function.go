@@ -9,9 +9,10 @@ import (
 )
 
 // 给 InvokeCache.Get() 用的 index 的
-var globalFuncNextIdx int
+var _funcNextIdx int
 
-var globalNumTodoFunc int
+var _numTodoFunc int
+var _numFunc int
 
 func getFunctionName(fi *gi.FunctionInfo) string {
 	fiName := fi.Name()
@@ -28,7 +29,7 @@ func getFunctionName(fi *gi.FunctionInfo) string {
 func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 	// 只用于 pFunction() 中
 	symbol := fi.Symbol()
-	name := globalSymbolNameMap[symbol]
+	name := _symbolNameMap[symbol]
 	if name != "" {
 		return name
 	}
@@ -67,13 +68,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	if container != nil {
 		identifyName = container.Name() + "." + fiName
 	}
-	if strSliceContains(globalCfg.Black, identifyName) {
+	if strSliceContains(_cfg.Black, identifyName) {
 		b.Pn("\n// black function %s\n", identifyName)
 		return
 	}
 
-	funcIdx := globalFuncNextIdx
-	globalFuncNextIdx++
+	funcIdx := _funcNextIdx
+	_funcNextIdx++
+	_numFunc++
 
 	fnName := getFunctionNameFinal(fi)
 
@@ -362,10 +364,25 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 	b.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
 
 	varInvoker := varReg.alloc("iv")
+
+	useGet1 := false
+	if _optNamespace == "GObject" || _optNamespace == "Gio" {
+		useGet1 = true
+	}
+
 	if container == nil {
-		b.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
+		if useGet1 {
+			b.Pn("%s, %s := _I.Get1(%d, %q, %q, \"\")", varInvoker, varErr, funcIdx, _optNamespace, fiName)
+		} else {
+			b.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
+		}
 	} else {
-		b.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
+		if useGet1 {
+			b.Pn("%s, %s := _I.Get1(%d, %q, %q, %q)", varInvoker, varErr, funcIdx, _optNamespace,
+				container.Name(), fiName)
+		} else {
+			b.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
+		}
 	}
 
 	{ // 处理 invoker 获取失败的情况
@@ -440,7 +457,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 
 	b.Pn("}") // end func
 	if b.containsTodo() {
-		globalNumTodoFunc++
+		_numTodoFunc++
 	}
 	s.GoBody.addBlock(b)
 }
@@ -1117,13 +1134,25 @@ func getGLibType(type0 string) string {
 		return type0
 	} else {
 		addGirImport("GLib")
-		return "glib." + type0
+		return "g." + type0
 	}
 }
 
 func isSameNamespace(ns string) bool {
-	if ns == optNamespace {
+	if ns == _optNamespace {
 		return true
+	}
+	switch _optNamespace {
+	case "GObject":
+		// gobject 有依赖 glib
+		if ns == "GLib" {
+			return true
+		}
+	case "Gio":
+		// gio 有依赖 glib 和 gobject
+		if ns == "GLib" || ns == "GObject" {
+			return true
+		}
 	}
 	return false
 }
@@ -1138,7 +1167,7 @@ func getPkgPrefix(ns string) string {
 		return ""
 	}
 	pkgBase := ""
-	for _, dep := range globalDeps {
+	for _, dep := range _deps {
 		if strings.HasPrefix(dep, ns+"-") {
 			pkgBase = strings.ToLower(dep)
 			break
@@ -1146,28 +1175,31 @@ func getPkgPrefix(ns string) string {
 	}
 
 	ret := strings.ToLower(ns) + "."
+	if ret == "glib." || ret == "gobject." || ret == "gio." {
+		ret = "g."
+	}
 	if pkgBase != "" {
-		globalSourceFile.AddGirImport(pkgBase)
+		_sourceFile.AddGirImport(pkgBase)
 	}
 	return ret
 }
 
 func addGirImport(ns string) {
 	pkgBase := ""
-	for _, dep := range globalDeps {
+	for _, dep := range _deps {
 		if strings.HasPrefix(dep, ns+"-") {
 			pkgBase = strings.ToLower(dep)
 			break
 		}
 	}
 	if pkgBase != "" {
-		globalSourceFile.AddGirImport(pkgBase)
+		_sourceFile.AddGirImport(pkgBase)
 	}
 }
 
 func getAllDeps(repo *gi.Repository, namespace string) []string {
 	if namespace == "" {
-		namespace = optNamespace
+		namespace = _optNamespace
 	}
 	if strings.Contains(namespace, "-") {
 		nameVer := strings.SplitN(namespace, "-", 2)
