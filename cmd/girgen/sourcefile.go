@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"golang.org/x/xerrors"
 )
 
 type SourceFile struct {
@@ -44,27 +46,34 @@ func (s *SourceFile) Print() {
 	}
 }
 
-func (s *SourceFile) Save(filename string) {
+func (s *SourceFile) Save(filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
-		log.Fatal("fail to create file:", err)
+		return xerrors.Errorf("create file: %w", err)
 	}
 	defer func() {
 		err := f.Close()
 		if err != nil {
-			log.Println("failed to close file:", err)
+			log.Println("WARN: failed to close file:", err)
 		}
 	}()
 
 	err = s.writeTo(f)
 	if err != nil {
-		log.Fatal("failed to write to file:", err)
+		return xerrors.Errorf("write to file: %w", err)
 	}
 
-	err = exec.Command("go", "fmt", filename).Run()
-	if err != nil {
-		log.Fatal("failed to format file:", filename)
+	fmtOut, err := exec.Command("go", "fmt", filename).CombinedOutput()
+	if len(fmtOut) > 0 {
+		_, err := fmt.Fprintf(os.Stdout, "go fmt output:\n%s", fmtOut)
+		if err != nil {
+			log.Println("WARN:", err)
+		}
 	}
+	if err != nil {
+		return xerrors.Errorf("run go fmt: %w", err)
+	}
+	return nil
 }
 
 func (s *SourceFile) writeTo(w io.Writer) error {

@@ -125,9 +125,6 @@ func main() {
 	log.Printf("deps: %#v\n", deps)
 	_deps = deps
 
-	//loadedNs := repo.LoadedNamespaces()
-	//log.Println("loadedNs:", loadedNs)
-
 	sourceFile := NewSourceFile(pkg)
 	_sourceFile = sourceFile
 
@@ -283,7 +280,10 @@ func main() {
 		}
 	}
 
-	sourceFile.Save(outFile)
+	err = sourceFile.Save(outFile)
+	if err != nil {
+		log.Fatal("failed to save: ", err)
+	}
 
 	log.Printf("stat %v TODO/ALL %d/%d %.2f%%\n", _optNamespace, _numTodoFunc, _numFunc,
 		float64(_numTodoFunc)/float64(_numFunc)*100)
