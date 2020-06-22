@@ -146,3 +146,7 @@ func getConstructorName(containerName, fnName string) string {
 	// DesktopAppInfo.CreateWithPath => DesktopAppInfoCreateWithPath
 	return containerName + fnName
 }
+
+func markDeprecated(s *SourceFile) {
+	s.GoBody.Pn("// Deprecated\n//")
+}

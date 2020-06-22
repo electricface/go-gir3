@@ -59,6 +59,9 @@ return
 */
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
+	if fi.IsDeprecated() {
+		markDeprecated(s)
+	}
 	b := &SourceBlock{}
 	symbol := fi.Symbol()
 	fiName := fi.Name()

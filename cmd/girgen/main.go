@@ -182,22 +182,18 @@ func main() {
 		case gi.INFO_TYPE_FUNCTION:
 			fi := gi.ToFunctionInfo(bi)
 			pFunction(sourceFile, fi)
+
 		case gi.INFO_TYPE_CALLBACK:
 			ci := gi.ToCallableInfo(bi)
 			pCallback(sourceFile, ci)
+
 		case gi.INFO_TYPE_STRUCT:
 			si := gi.ToStructInfo(bi)
 			pStruct(sourceFile, si)
 
-		case gi.INFO_TYPE_BOXED:
-			// TODO 什么是 BOXED?
-		case gi.INFO_TYPE_ENUM:
-			ei := gi.ToEnumInfo(bi)
-			pEnum(sourceFile, ei, true)
-
-		case gi.INFO_TYPE_FLAGS:
-			ei := gi.ToEnumInfo(bi)
-			pEnum(sourceFile, ei, false)
+		case gi.INFO_TYPE_UNION:
+			ui := gi.ToUnionInfo(bi)
+			pUnion(sourceFile, ui)
 
 		case gi.INFO_TYPE_OBJECT:
 			oi := gi.ToObjectInfo(bi)
@@ -207,13 +203,19 @@ func main() {
 			ii := gi.ToInterfaceInfo(bi)
 			pInterface(sourceFile, ii)
 
+		case gi.INFO_TYPE_ENUM:
+			ei := gi.ToEnumInfo(bi)
+			pEnum(sourceFile, ei, true)
+
+		case gi.INFO_TYPE_FLAGS:
+			ei := gi.ToEnumInfo(bi)
+			pEnum(sourceFile, ei, false)
+
 		case gi.INFO_TYPE_CONSTANT:
 			ci := gi.ToConstantInfo(bi)
 			constants = pConstant(constants, ci)
-		case gi.INFO_TYPE_UNION:
-			ui := gi.ToUnionInfo(bi)
-			pUnion(sourceFile, ui)
 
+			//case gi.INFO_TYPE_BOXED:
 			//case gi.INFO_TYPE_VALUE:
 			//case gi.INFO_TYPE_SIGNAL:
 			//case gi.INFO_TYPE_VFUNC:
@@ -312,8 +314,11 @@ func getEnumTypeName(type0 string) string {
 	return type0 + "Enum"
 }
 
-func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
-	name := enum.Name()
+func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
+	if ei.IsDeprecated() {
+		markDeprecated(s)
+	}
+	name := ei.Name()
 	type0 := name
 	if isEnum {
 		s.GoBody.Pn("// Enum %v", name)
@@ -325,9 +330,9 @@ func pEnum(s *SourceFile, enum *gi.EnumInfo, isEnum bool) {
 	}
 	s.GoBody.Pn("type %s int", type0)
 	s.GoBody.Pn("const (")
-	num := enum.NumValue()
+	num := ei.NumValue()
 	for i := 0; i < num; i++ {
-		value := enum.Value(i)
+		value := ei.Value(i)
 		val := value.Value()
 		memberName := name + snake2Camel(value.Name())
 		s.GoBody.Pn("%s %s = %v", memberName, type0, val)
@@ -346,6 +351,9 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 		// 过滤掉对象的 Class 结构，比如 Object 的 ObjectClass
 		s.GoBody.Pn("// ignore GType struct %s", name)
 		return
+	}
+	if si.IsDeprecated() {
+		markDeprecated(s)
 	}
 
 	// 过滤掉 Class 结尾的，并且还存在去掉 Class 后缀后还存在的类型的结构。
@@ -400,6 +408,9 @@ func pGetTypeFunc(s *SourceFile, name string) {
 }
 
 func pUnion(s *SourceFile, ui *gi.UnionInfo) {
+	if ui.IsDeprecated() {
+		markDeprecated(s)
+	}
 	name := ui.Name()
 	s.GoBody.Pn("// Union %s", name)
 	s.GoBody.Pn("type %s struct {", name)
@@ -421,6 +432,9 @@ func pUnion(s *SourceFile, ui *gi.UnionInfo) {
 }
 
 func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
+	if ii.IsDeprecated() {
+		markDeprecated(s)
+	}
 	name := ii.Name()
 	s.GoBody.Pn("// Interface %s", name)
 	s.GoBody.Pn("type %s struct {", name)
@@ -445,6 +459,9 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 
 func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	name := oi.Name()
+	if oi.IsDeprecated() {
+		markDeprecated(s)
+	}
 	s.GoBody.Pn("// Object %s", name)
 	s.GoBody.Pn("type %s struct {", name)
 
