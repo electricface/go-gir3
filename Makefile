@@ -3,7 +3,9 @@ G_DIR=/home/tp1/go/src/github.com/electricface/go-gir/g-2.0
 girgen:
 	go build -o girgen -v github.com/electricface/go-gir3/cmd/girgen
 
-gen_all: glib-2.0 gobject-2.0 gio-2.0 gudev-1.0 atk-1.0 cairo-1.0 gdk-3.0 pango-1.0 gdk-pixbuf-2.0 gtk-3.0 gtksource-4
+gen_gtk: glib-2.0 gobject-2.0 gio-2.0 gudev-1.0 atk-1.0 cairo-1.0 gdk-3.0 pango-1.0 gdk-pixbuf-2.0 gtk-3.0 gtksource-4
+
+gen_all: gen_gtk
 
 gen_g: glib-2.0 gobject-2.0 gio-2.0
 
@@ -31,6 +33,9 @@ gdk-3.0:
 pango-1.0:
 	./girgen -n Pango -v 1.0
 
+pangocairo-1.0:
+	./girgen -n PangoCairo -v 1.0
+
 gdk-pixbuf-2.0:
 	./girgen -n GdkPixbuf -v 2.0
 
@@ -40,5 +45,7 @@ gtk-3.0:
 gtksource-4:
 	./girgen -n GtkSource -v 4
 
-.PHONY: girgen
+vte-2.91:
+	./girgen -n Vte -v 2.91
 
+.PHONY: girgen

@@ -248,7 +248,11 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 				identPrefix := getCIdentifierPrefix(ii)
 				name := ii.Name()
 				if identPrefix == "cairo" {
-					name = "_" + strings.ToLower(name) + "_t"
+					if name == "Context" {
+						name = "_t"
+					} else {
+						name = "_" + strings.ToLower(name) + "_t"
+					}
 				}
 				cType = identPrefix + name + "*"
 				cgoType = "*C." + identPrefix + name
