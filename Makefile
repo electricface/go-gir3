@@ -48,4 +48,10 @@ gtksource-4:
 vte-2.91:
 	./girgen -n Vte -v 2.91
 
+gtop-2.0:
+	./girgen -n GTop -v 2.0
+
+girepository-2.0:
+	./girgen -n GIRepository -v 2.0
+
 .PHONY: girgen
