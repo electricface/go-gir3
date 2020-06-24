@@ -349,7 +349,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 
 	if si.IsGTypeStruct() {
 		// 过滤掉对象的 Class 结构，比如 Object 的 ObjectClass
-		s.GoBody.Pn("// ignore GType struct %s", name)
+		s.GoBody.Pn("// ignore GType struct %s\n", name)
 		return
 	}
 	if si.IsDeprecated() {
@@ -363,7 +363,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 		nameRmClass := strings.TrimSuffix(name, "Class")
 		bi := repo.FindByName(_optNamespace, nameRmClass)
 		if !bi.IsNil() {
-			s.GoBody.Pn("// ignore Class struct %s, type of %s is %s",
+			s.GoBody.Pn("// ignore Class struct %s, type of %s is %s\n",
 				name, nameRmClass, bi.Type())
 			bi.Unref()
 			return
