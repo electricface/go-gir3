@@ -725,8 +725,27 @@ func (ci *ConstantInfo) Value() interface{} {
 		return *(*float64)(unsafe.Pointer(&arg))
 	case TYPE_TAG_UTF8, TYPE_TAG_FILENAME:
 		return C.GoString(*(**C.char)(unsafe.Pointer(&arg)))
+	case TYPE_TAG_INTERFACE:
+		var result interface{}
+		result = "TODO constant tag interface"
+		ii := ti.Interface()
+		switch ii.Type() {
+		case INFO_TYPE_ENUM:
+			//val := *(*int32)(unsafe.Pointer(&arg))
+			//result = fmt.Sprintf("TODO tag ifc enum %v", val)
+			// TODO： 目前没有办法求值
+			result = nil
+		case INFO_TYPE_FLAGS:
+			//val := *(*uint32)(unsafe.Pointer(&arg))
+			//result = fmt.Sprintf("TODO tag ifc flags %v", val)
+			// TODO： 目前没有办法求值
+			result = nil
+		}
+		ii.Unref()
+
+		return result
 	}
-	panic("unsupported constant value")
+	panic(fmt.Errorf("unsupported constant value, type tag: %q", ti.Tag().String()))
 }
 
 //gint                g_constant_info_get_value           (GIConstantInfo *info,

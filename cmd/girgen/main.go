@@ -293,6 +293,11 @@ func main() {
 
 func pConstant(constants []string, ci *gi.ConstantInfo) []string {
 	val := ci.Value()
+	if val == nil {
+		// 忽略这个常量
+		return constants
+	}
+
 	valStr, ok := val.(string)
 	if ok {
 		constants = append(constants, ci.Name(), strconv.Quote(valStr))
