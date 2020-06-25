@@ -352,18 +352,18 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 func pStruct(s *SourceFile, si *gi.StructInfo) {
 	name := si.Name()
 
+	numMethods := si.NumMethod()
 	if si.IsGTypeStruct() {
-		// 过滤掉对象的 Class 结构，比如 Object 的 ObjectClass
-		s.GoBody.Pn("// ignore GType struct %s\n", name)
-		return
-	}
-	if si.IsDeprecated() {
-		markDeprecated(s)
+		// 过滤掉对象的 Class 结构，比如 gtk.Window 的 WindowClass
+		if numMethods == 0 {
+			s.GoBody.Pn("// ignore GType struct %s\n", name)
+			return
+		}
 	}
 
 	// 过滤掉 Class 结尾的，并且还存在去掉 Class 后缀后还存在的类型的结构。
 	// 目前它只过滤掉了 gobject 的 TypePluginClass 结构， 而 TypePlugin 是接口。
-	if strings.HasSuffix(name, "Class") {
+	if strings.HasSuffix(name, "Class") && numMethods == 0 {
 		repo := gi.DefaultRepository()
 		nameRmClass := strings.TrimSuffix(name, "Class")
 		bi := repo.FindByName(_optNamespace, nameRmClass)
@@ -373,6 +373,10 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 			bi.Unref()
 			return
 		}
+	}
+
+	if si.IsDeprecated() {
+		markDeprecated(s)
 	}
 
 	s.GoBody.Pn("// Struct %s", name)
@@ -387,8 +391,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 
 	pGetTypeFunc(s, name)
 
-	numMethod := si.NumMethod()
-	for i := 0; i < numMethod; i++ {
+	for i := 0; i < numMethods; i++ {
 		fi := si.Method(i)
 		pFunction(s, fi)
 	}
