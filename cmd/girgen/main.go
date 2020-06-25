@@ -462,6 +462,27 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 	}
 }
 
+//  isParentImplIfc 返回是否父类型实现了 ifcInfo 接口
+func isParentImplIfc(oi *gi.ObjectInfo, ifcInfo *gi.InterfaceInfo) bool {
+	ifcGType := ifcInfo.GetGType()
+	parent := oi.Parent()
+	if parent == nil {
+		return false
+	}
+	numIfcs := parent.NumInterface()
+	for i := 0; i < numIfcs; i++ {
+		ii := parent.Interface(i)
+		gType := ii.GetGType()
+		if gType == ifcGType {
+			return true
+		}
+		ii.Unref()
+	}
+	result := isParentImplIfc(parent, ifcInfo)
+	parent.Unref()
+	return result
+}
+
 func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	name := oi.Name()
 	if oi.IsDeprecated() {
@@ -474,8 +495,13 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	numIfcs := oi.NumInterface()
 	for i := 0; i < numIfcs; i++ {
 		ii := oi.Interface(i)
-		typeName := getTypeName(gi.ToBaseInfo(ii))
-		s.GoBody.Pn("%sIfc", typeName)
+
+		// 如果父类型没有实现此接口，才嵌入它
+		if !isParentImplIfc(oi, ii) {
+			typeName := getTypeName(gi.ToBaseInfo(ii))
+			s.GoBody.Pn("%sIfc", typeName)
+		}
+
 		ii.Unref()
 	}
 
@@ -491,12 +517,9 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 
 	s.GoBody.Pn("}") // end struct
 
-	if parent != nil {
-		// 只有有 parent 的 object 才提供 WrapXXX 方法
-		s.GoBody.P("func Wrap%s(p unsafe.Pointer) (r %s) {", name, name)
-		s.GoBody.P("r.P = p;")
-		s.GoBody.Pn("return }")
-	}
+	s.GoBody.P("func Wrap%s(p unsafe.Pointer) (r %s) {", name, name)
+	s.GoBody.P("r.P = p;")
+	s.GoBody.Pn("return }")
 
 	s.GoBody.P("type I%s interface {", name)
 	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
