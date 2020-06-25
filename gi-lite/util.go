@@ -132,7 +132,8 @@ func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) 
 			methodInfo = ui.FindMethod(fnName)
 		}
 		if methodInfo.P == nil {
-			return Invoker{}, fmt.Errorf("not found %q in %s %v", fnName, type0, name)
+			return Invoker{}, fmt.Errorf("not found %q in %s %v in namespace %v",
+				fnName, type0, name, ns)
 		}
 		defer methodInfo.Unref()
 		funcInfo = methodInfo
