@@ -491,7 +491,8 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	s.GoBody.Pn("// Object %s", name)
 	s.GoBody.Pn("type %s struct {", name)
 
-	// object 有的接口
+	var embeddedIfcs []string
+
 	numIfcs := oi.NumInterface()
 	for i := 0; i < numIfcs; i++ {
 		ii := oi.Interface(i)
@@ -500,6 +501,7 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 		if !isParentImplIfc(oi, ii) {
 			typeName := getTypeName(gi.ToBaseInfo(ii))
 			s.GoBody.Pn("%sIfc", typeName)
+			embeddedIfcs = append(embeddedIfcs, ii.Name())
 		}
 
 		ii.Unref()
@@ -525,11 +527,8 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
 	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
 
-	for i := 0; i < numIfcs; i++ {
-		ii := oi.Interface(i)
-		ifcTypeName := ii.Name()
-		s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, ifcTypeName)
-		ii.Unref()
+	for _, ifc := range embeddedIfcs {
+		s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, ifc)
 	}
 
 	pGetTypeFunc(s, name)
