@@ -414,7 +414,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 	}
 	getArgs = append(getArgs, "gi.INFO_TYPE_"+infoType) // infoType
-	getArgs = append(getArgs, 0)                        // flags
+
+	findMethodFlags := "0"
+	if _optNamespace == "GObject" && container != nil && container.Name() == "ObjectClass" {
+		// 因为调用 StructInfo.FindMethod 方法去查找 GObject.ObjectClass 的方法会导致崩溃，所以加上这个 flag 来规避。
+		findMethodFlags = "gi.FindMethodNoCallFind"
+	}
+	getArgs = append(getArgs, findMethodFlags) // flags
 
 	b.P("%v, %v := _I.Get", varInvoker, varErr)
 	if useGet1 {
