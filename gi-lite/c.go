@@ -100,11 +100,19 @@ func (r Repository) p() *C.GIRepository {
 
 // g_irepository_find_by_name
 func (r Repository) FindByName(namespace, name string) BaseInfo {
-	gnamespace := _GoStringToGString(namespace)
-	gname := _GoStringToGString(name)
-	ret := C.g_irepository_find_by_name(r.p(), gnamespace, gname)
-	C.free_gstring(gname)
-	C.free_gstring(gnamespace)
+	gNamespace := _GoStringToGString(namespace)
+	gName := _GoStringToGString(name)
+	ret := C.g_irepository_find_by_name(r.p(), gNamespace, gName)
+	C.free_gstring(gName)
+	C.free_gstring(gNamespace)
+	return BaseInfo{P: unsafe.Pointer(ret)}
+}
+
+// g_irepository_get_info
+func (r Repository) Info(namespace string, index int) BaseInfo {
+	gNamespace := _GoStringToGString(namespace)
+	ret := C.g_irepository_get_info(r.p(), gNamespace, C.gint(index))
+	C.free_gstring(gNamespace)
 	return BaseInfo{P: unsafe.Pointer(ret)}
 }
 
@@ -155,6 +163,11 @@ func (bi BaseInfo) Unref() {
 // g_base_info_get_type
 func (bi BaseInfo) Type() InfoType {
 	return InfoType(C.g_base_info_get_type(bi.p()))
+}
+
+// g_base_info_get_name
+func (bi BaseInfo) Name() string {
+	return _GStringToGoString(C.g_base_info_get_name(bi.p()))
 }
 
 type InfoType int
@@ -216,12 +229,23 @@ func (ii InterfaceInfo) FindMethod(name string) FunctionInfo {
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 
+// g_interface_info_get_n_methods
+func (ii InterfaceInfo) NumMethods() int {
+	return int(C.g_interface_info_get_n_methods(ii.p()))
+}
+
+// g_interface_info_get_method
+func (ii InterfaceInfo) Method(index int) FunctionInfo {
+	ret := C.g_interface_info_get_method(ii.p(), C.gint(index))
+	return WrapFunctionInfo(unsafe.Pointer(ret))
+}
+
 type ObjectInfo struct {
 	RegisteredTypeInfo
 }
 
-func (ii ObjectInfo) p() *C.GIObjectInfo {
-	return (*C.GIObjectInfo)(ii.P)
+func (oi ObjectInfo) p() *C.GIObjectInfo {
+	return (*C.GIObjectInfo)(oi.P)
 }
 
 func WrapObjectInfo(p unsafe.Pointer) (ret ObjectInfo) {
@@ -230,10 +254,21 @@ func WrapObjectInfo(p unsafe.Pointer) (ret ObjectInfo) {
 }
 
 // g_object_info_find_method
-func (ii ObjectInfo) FindMethod(name string) FunctionInfo {
+func (oi ObjectInfo) FindMethod(name string) FunctionInfo {
 	gName := _GoStringToGString(name)
-	ret := C.g_object_info_find_method(ii.p(), gName)
+	ret := C.g_object_info_find_method(oi.p(), gName)
 	C.free_gstring(gName)
+	return WrapFunctionInfo(unsafe.Pointer(ret))
+}
+
+// g_object_info_get_n_methods
+func (oi ObjectInfo) NumMethods() int {
+	return int(C.g_object_info_get_n_methods(oi.p()))
+}
+
+// g_object_info_get_method
+func (oi ObjectInfo) Method(index int) FunctionInfo {
+	ret := C.g_object_info_get_method(oi.p(), C.gint(index))
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 
@@ -241,8 +276,8 @@ type StructInfo struct {
 	RegisteredTypeInfo
 }
 
-func (ii StructInfo) p() *C.GIStructInfo {
-	return (*C.GIStructInfo)(ii.P)
+func (si StructInfo) p() *C.GIStructInfo {
+	return (*C.GIStructInfo)(si.P)
 }
 
 func WrapStructInfo(p unsafe.Pointer) (ret StructInfo) {
@@ -251,10 +286,21 @@ func WrapStructInfo(p unsafe.Pointer) (ret StructInfo) {
 }
 
 // g_struct_info_find_method
-func (ii StructInfo) FindMethod(name string) FunctionInfo {
+func (si StructInfo) FindMethod(name string) FunctionInfo {
 	gName := _GoStringToGString(name)
-	ret := C.g_struct_info_find_method(ii.p(), gName)
+	ret := C.g_struct_info_find_method(si.p(), gName)
 	C.free_gstring(gName)
+	return WrapFunctionInfo(unsafe.Pointer(ret))
+}
+
+// g_struct_info_get_n_methods
+func (si StructInfo) NumMethods() int {
+	return int(C.g_struct_info_get_n_methods(si.p()))
+}
+
+// g_struct_info_get_method
+func (si StructInfo) Method(index int) FunctionInfo {
+	ret := C.g_struct_info_get_method(si.p(), C.gint(index))
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 
@@ -262,8 +308,8 @@ type UnionInfo struct {
 	RegisteredTypeInfo
 }
 
-func (ii UnionInfo) p() *C.GIUnionInfo {
-	return (*C.GIUnionInfo)(ii.P)
+func (ui UnionInfo) p() *C.GIUnionInfo {
+	return (*C.GIUnionInfo)(ui.P)
 }
 
 func WrapUnionInfo(p unsafe.Pointer) (ret UnionInfo) {
@@ -272,10 +318,21 @@ func WrapUnionInfo(p unsafe.Pointer) (ret UnionInfo) {
 }
 
 // g_union_info_find_method
-func (ii UnionInfo) FindMethod(name string) FunctionInfo {
+func (ui UnionInfo) FindMethod(name string) FunctionInfo {
 	gName := _GoStringToGString(name)
-	ret := C.g_union_info_find_method(ii.p(), gName)
+	ret := C.g_union_info_find_method(ui.p(), gName)
 	C.free_gstring(gName)
+	return WrapFunctionInfo(unsafe.Pointer(ret))
+}
+
+// g_union_info_get_n_methods
+func (ui UnionInfo) NumMethods() int {
+	return int(C.g_union_info_get_n_methods(ui.p()))
+}
+
+// g_union_info_get_method
+func (ui UnionInfo) Method(index int) FunctionInfo {
+	ret := C.g_union_info_get_method(ui.p(), C.gint(index))
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 

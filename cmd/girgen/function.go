@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/electricface/go-gir3/gi"
@@ -58,7 +59,7 @@ return
 
 */
 
-func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
+func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	if fi.IsDeprecated() {
 		markDeprecated(s)
 	}
@@ -373,20 +374,57 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo) {
 		useGet1 = true
 	}
 
+	// Get1(id uint, ns, nameLv1, nameLv2 string, idxLv1, idxLv2 int, infoType InfoType, flags FindMethodFlags)
+	//id: funcIdx
+	// ns: quote _optNamespace
+	// nameLv1: quote fiName | quote container.Name()
+	// nameLv2: "" | quote fiName
+	// idxLv1: idxLv1
+	// idxLv2: idxLv2
+	// infoType: gi.INFO_TYPE_FUNCTION | gi.INFO_TYPE_XX (XX is STRUCT,UNION,OBJECT,INTERFACE)
+	// flags: 0 or gi.FindMethodNoCallFind
+	getArgs := []interface{}{funcIdx} // id
+	if useGet1 {
+		getArgs = append(getArgs, strconv.Quote(_optNamespace)) // ns
+	}
+	// nameLv1, nameLv2
 	if container == nil {
-		if useGet1 {
-			b.Pn("%s, %s := _I.Get1(%d, %q, %q, \"\")", varInvoker, varErr, funcIdx, _optNamespace, fiName)
-		} else {
-			b.Pn("%s, %s := _I.Get(%d, %q, \"\")", varInvoker, varErr, funcIdx, fiName)
-		}
+		getArgs = append(getArgs, strconv.Quote(fiName)) // nameLv1
+		getArgs = append(getArgs, `""`)                  // nameLv2
 	} else {
-		if useGet1 {
-			b.Pn("%s, %s := _I.Get1(%d, %q, %q, %q)", varInvoker, varErr, funcIdx, _optNamespace,
-				container.Name(), fiName)
-		} else {
-			b.Pn("%s, %s := _I.Get(%d, %q, %q)", varInvoker, varErr, funcIdx, container.Name(), fiName)
+		getArgs = append(getArgs, strconv.Quote(container.Name())) // nameLv1
+		getArgs = append(getArgs, strconv.Quote(fiName))           // nameLv2
+	}
+
+	getArgs = append(getArgs, idxLv1) // idxLv1
+	getArgs = append(getArgs, idxLv2) // idxLv2
+
+	// infoType
+	infoType := "FUNCTION"
+	if container != nil {
+		switch container.Type() {
+		case gi.INFO_TYPE_STRUCT:
+			infoType = "STRUCT"
+		case gi.INFO_TYPE_UNION:
+			infoType = "UNION"
+		case gi.INFO_TYPE_OBJECT:
+			infoType = "OBJECT"
+		case gi.INFO_TYPE_INTERFACE:
+			infoType = "INTERFACE"
 		}
 	}
+	getArgs = append(getArgs, "gi.INFO_TYPE_"+infoType) // infoType
+	getArgs = append(getArgs, 0)                        // flags
+
+	b.P("%v, %v := _I.Get", varInvoker, varErr)
+	if useGet1 {
+		b.P("1")
+	}
+	getArgsStr := make([]string, len(getArgs))
+	for i, v := range getArgs {
+		getArgsStr[i] = fmt.Sprintf("%v", v)
+	}
+	b.Pn("(%v)", strings.Join(getArgsStr, ", "))
 
 	{ // 处理 invoker 获取失败的情况
 

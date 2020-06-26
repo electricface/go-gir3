@@ -94,7 +94,60 @@ func (ic *InvokerCache) GetGType(id uint, typeName string) GType {
 	return ic.GetGType1(id, ic.namespace, typeName)
 }
 
-func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) {
+// 需要 unref 返回值
+func findInfoLv1(ns, name string, index int, infoType InfoType) BaseInfo {
+	if index >= 0 {
+		info := defaultRepo.Info(ns, index)
+		if info.P != nil {
+			if name == info.Name() && infoType == info.Type() {
+				return info
+			}
+		}
+	}
+	return defaultRepo.FindByName(ns, name)
+}
+
+// 需要 unref 返回值
+func findMethodInfo(info infoWithMethod, name string, index int, flags FindMethodFlags) (fi FunctionInfo) {
+	if index >= 0 {
+		fi = info.Method(index)
+		if fi.P != nil {
+			if name == fi.Name() {
+				return
+			}
+		}
+	}
+	if flags&FindMethodNoCallFind == 0 {
+		fi = info.FindMethod(name)
+		if fi.P != nil {
+			return
+		}
+	}
+	numMethods := info.NumMethods()
+	for i := 0; i < numMethods; i++ {
+		method := info.Method(i)
+		if method.Name() == name {
+			return method
+		}
+		method.Unref()
+	}
+
+	return
+}
+
+type FindMethodFlags uint
+
+const (
+	FindMethodNoCallFind FindMethodFlags = 1 << iota // 不要调用 FindMethod 方法
+)
+
+type infoWithMethod interface {
+	FindMethod(name string) FunctionInfo
+	Method(index int) FunctionInfo
+	NumMethods() int
+}
+
+func (ic *InvokerCache) Get1(id uint, ns, nameLv1, nameLv2 string, idxLv1, idxLv2 int, infoType InfoType, flags FindMethodFlags) (Invoker, error) {
 	ic.mu.RLock()
 	invoker, ok := ic.m[id]
 	ic.mu.RUnlock()
@@ -102,9 +155,9 @@ func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) 
 		return invoker, nil
 	}
 
-	bi := defaultRepo.FindByName(ns, name)
+	bi := findInfoLv1(ns, nameLv1, idxLv1, infoType)
 	if bi.P == nil {
-		return Invoker{}, fmt.Errorf("not found %q in namespace %v", name, ic.namespace)
+		return Invoker{}, fmt.Errorf("not found %q in namespace %v", nameLv1, ic.namespace)
 	}
 	defer bi.Unref()
 
@@ -113,27 +166,24 @@ func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) 
 	switch type0 {
 	case INFO_TYPE_FUNCTION:
 		funcInfo = WrapFunctionInfo(bi.P)
-		// NOTE: 不要再 unref funcInfo 了
+		// NOTE: 不要再 unref funcInfo 了, 因为所有权在 bi。
 
 	case INFO_TYPE_INTERFACE, INFO_TYPE_OBJECT, INFO_TYPE_STRUCT, INFO_TYPE_UNION:
-		var methodInfo FunctionInfo
+		var infoM infoWithMethod
 		switch type0 {
 		case INFO_TYPE_INTERFACE:
-			ifcInfo := WrapInterfaceInfo(bi.P)
-			methodInfo = ifcInfo.FindMethod(fnName)
+			infoM = WrapInterfaceInfo(bi.P)
 		case INFO_TYPE_OBJECT:
-			objInfo := WrapObjectInfo(bi.P)
-			methodInfo = objInfo.FindMethod(fnName)
+			infoM = WrapObjectInfo(bi.P)
 		case INFO_TYPE_STRUCT:
-			si := WrapStructInfo(bi.P)
-			methodInfo = si.FindMethod(fnName)
+			infoM = WrapStructInfo(bi.P)
 		case INFO_TYPE_UNION:
-			ui := WrapUnionInfo(bi.P)
-			methodInfo = ui.FindMethod(fnName)
+			infoM = WrapUnionInfo(bi.P)
 		}
+		methodInfo := findMethodInfo(infoM, nameLv2, idxLv2, flags)
 		if methodInfo.P == nil {
 			return Invoker{}, fmt.Errorf("not found %q in %s %v in namespace %v",
-				fnName, type0, name, ns)
+				nameLv2, type0, nameLv1, ns)
 		}
 		defer methodInfo.Unref()
 		funcInfo = methodInfo
@@ -151,8 +201,8 @@ func (ic *InvokerCache) Get1(id uint, ns, name, fnName string) (Invoker, error) 
 	return invoker, nil
 }
 
-func (ic *InvokerCache) Get(id uint, name, fnName string) (Invoker, error) {
-	return ic.Get1(id, ic.namespace, name, fnName)
+func (ic *InvokerCache) Get(id uint, nameLv1, nameLv2 string, idxLv1, idxLv2 int, infoType InfoType, flags FindMethodFlags) (Invoker, error) {
+	return ic.Get1(id, ic.namespace, nameLv1, nameLv2, idxLv1, idxLv2, infoType, flags)
 }
 
 func Int2Bool(v int) bool {

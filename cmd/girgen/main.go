@@ -176,12 +176,12 @@ func main() {
 	forEachFunctionInfo(repo, _optNamespace, handleFuncNameClash)
 	var constants []string
 
-	for i := 0; i < numInfos; i++ {
-		bi := repo.Info(_optNamespace, i)
+	for idxLv1 := 0; idxLv1 < numInfos; idxLv1++ {
+		bi := repo.Info(_optNamespace, idxLv1)
 		switch bi.Type() {
 		case gi.INFO_TYPE_FUNCTION:
 			fi := gi.ToFunctionInfo(bi)
-			pFunction(sourceFile, fi)
+			pFunction(sourceFile, fi, idxLv1, 0)
 
 		case gi.INFO_TYPE_CALLBACK:
 			ci := gi.ToCallableInfo(bi)
@@ -189,19 +189,19 @@ func main() {
 
 		case gi.INFO_TYPE_STRUCT:
 			si := gi.ToStructInfo(bi)
-			pStruct(sourceFile, si)
+			pStruct(sourceFile, si, idxLv1)
 
 		case gi.INFO_TYPE_UNION:
 			ui := gi.ToUnionInfo(bi)
-			pUnion(sourceFile, ui)
+			pUnion(sourceFile, ui, idxLv1)
 
 		case gi.INFO_TYPE_OBJECT:
 			oi := gi.ToObjectInfo(bi)
-			pObject(sourceFile, oi)
+			pObject(sourceFile, oi, idxLv1)
 
 		case gi.INFO_TYPE_INTERFACE:
 			ii := gi.ToInterfaceInfo(bi)
-			pInterface(sourceFile, ii)
+			pInterface(sourceFile, ii, idxLv1)
 
 		case gi.INFO_TYPE_ENUM:
 			ei := gi.ToEnumInfo(bi)
@@ -349,7 +349,7 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 	pGetTypeFunc(s, name)
 }
 
-func pStruct(s *SourceFile, si *gi.StructInfo) {
+func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 	name := si.Name()
 
 	numMethods := si.NumMethod()
@@ -391,9 +391,9 @@ func pStruct(s *SourceFile, si *gi.StructInfo) {
 
 	pGetTypeFunc(s, name)
 
-	for i := 0; i < numMethods; i++ {
-		fi := si.Method(i)
-		pFunction(s, fi)
+	for idxLv2 := 0; idxLv2 < numMethods; idxLv2++ {
+		fi := si.Method(idxLv2)
+		pFunction(s, fi, idxLv1, idxLv2)
 	}
 }
 
@@ -415,7 +415,7 @@ func pGetTypeFunc(s *SourceFile, name string) {
 	_getTypeNextId++
 }
 
-func pUnion(s *SourceFile, ui *gi.UnionInfo) {
+func pUnion(s *SourceFile, ui *gi.UnionInfo, idxLv1 int) {
 	if ui.IsDeprecated() {
 		markDeprecated(s)
 	}
@@ -433,13 +433,13 @@ func pUnion(s *SourceFile, ui *gi.UnionInfo) {
 	pGetTypeFunc(s, name)
 
 	numMethod := ui.NumMethod()
-	for i := 0; i < numMethod; i++ {
-		fi := ui.Method(i)
-		pFunction(s, fi)
+	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
+		fi := ui.Method(idxLv2)
+		pFunction(s, fi, idxLv1, idxLv2)
 	}
 }
 
-func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
+func pInterface(s *SourceFile, ii *gi.InterfaceInfo, idxLv1 int) {
 	if ii.IsDeprecated() {
 		markDeprecated(s)
 	}
@@ -459,9 +459,9 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo) {
 	pGetTypeFunc(s, name)
 
 	numMethod := ii.NumMethod()
-	for i := 0; i < numMethod; i++ {
-		fi := ii.Method(i)
-		pFunction(s, fi)
+	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
+		fi := ii.Method(idxLv2)
+		pFunction(s, fi, idxLv1, idxLv2)
 	}
 }
 
@@ -486,7 +486,7 @@ func isParentImplIfc(oi *gi.ObjectInfo, ifcInfo *gi.InterfaceInfo) bool {
 	return result
 }
 
-func pObject(s *SourceFile, oi *gi.ObjectInfo) {
+func pObject(s *SourceFile, oi *gi.ObjectInfo, idxLv1 int) {
 	name := oi.Name()
 	if oi.IsDeprecated() {
 		markDeprecated(s)
@@ -537,9 +537,9 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo) {
 	pGetTypeFunc(s, name)
 
 	numMethod := oi.NumMethod()
-	for i := 0; i < numMethod; i++ {
-		fi := oi.Method(i)
-		pFunction(s, fi)
+	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
+		fi := oi.Method(idxLv2)
+		pFunction(s, fi, idxLv1, idxLv2)
 	}
 }
 
