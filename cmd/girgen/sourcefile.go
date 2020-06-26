@@ -39,6 +39,7 @@ type SourceFile struct {
 	Pkg       string
 	CPkgList  []string
 	CIncludes []string
+	Header    *SourceBody
 	CHeader   *SourceBody
 	CBody     *SourceBody
 
@@ -48,8 +49,8 @@ type SourceFile struct {
 
 func NewSourceFile(pkg string) *SourceFile {
 	sf := &SourceFile{
-		Pkg: pkg,
-
+		Pkg:     pkg,
+		Header:  &SourceBody{},
 		CHeader: &SourceBody{},
 		CBody:   &SourceBody{},
 		GoBody:  &SourceBody{},
@@ -98,7 +99,12 @@ func (s *SourceFile) Save(filename string) error {
 }
 
 func (s *SourceFile) writeTo(w io.Writer) error {
-	_, err := io.WriteString(w, "package "+s.Pkg+"\n")
+	_, err := w.Write(s.Header.buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	_, err = io.WriteString(w, "package "+s.Pkg+"\n")
 	if err != nil {
 		return err
 	}
@@ -254,6 +260,10 @@ func (v *SourceBody) Pn(format string, a ...interface{}) {
 func (v *SourceBody) P(format string, a ...interface{}) {
 	str := fmt.Sprintf(format, a...)
 	v.writeStr(str)
+}
+
+func (v *SourceBody) WriteString(str string) {
+	v.buf.WriteString(str)
 }
 
 func (v *SourceBody) addBlock(block *SourceBlock) {
