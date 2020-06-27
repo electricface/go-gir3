@@ -1,6 +1,3 @@
 {
-  "Black": [
-    "Value.set_string_take_ownership",
-    "Value.set_static_string"
-  ]
+    "Black": ["Value.set_string_take_ownership", "Value.set_static_string"]
 }

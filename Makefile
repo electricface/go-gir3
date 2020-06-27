@@ -1,4 +1,4 @@
-export GIR_PKG_PATH := github.com/electricface/go-gir
+export GIR_PKG_PATH := github.com/linuxdeepin/go-gir
 G_DIR=/home/tp1/go/src/$(GIR_PKG_PATH)/g-2.0
 
 girgen:

@@ -1,8 +1,10 @@
 package gtk
 
-import gi "github.com/electricface/go-gir3/gi-lite"
-import "unsafe"
-import "log"
+import (
+	"github.com/linuxdeepin/go-gir/gi"
+	"log"
+	"unsafe"
+)
 
 func Init(argc int, argv int) {
 	iv, err := _I.Get(3703, "init", "", -1, -1, gi.INFO_TYPE_FUNCTION, 0)

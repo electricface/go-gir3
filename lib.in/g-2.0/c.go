@@ -46,8 +46,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/electricface/go-gir/util"
-	gi "github.com/electricface/go-gir3/gi-lite"
+	"github.com/linuxdeepin/go-gir/gi"
+	"github.com/linuxdeepin/go-gir/util"
 )
 
 type closureContext struct {

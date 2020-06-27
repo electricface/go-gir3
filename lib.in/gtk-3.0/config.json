@@ -1,6 +1,3 @@
 {
-  "Black": [
-    "rc_parse_priority",
-    "init"
-  ]
+    "Black": ["rc_parse_priority","init"]
 }

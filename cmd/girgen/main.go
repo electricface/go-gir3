@@ -340,7 +340,7 @@ func main() {
 		sourceFile.AddCPkg(pkg.Name)
 	}
 
-	sourceFile.AddGoImport("gi,github.com/electricface/go-gir3/gi-lite")
+	sourceFile.AddGirImport("gi")
 	sourceFile.AddGoImport("unsafe")
 	sourceFile.AddGoImport("log")
 
