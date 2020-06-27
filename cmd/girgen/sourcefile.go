@@ -204,7 +204,7 @@ func (s *SourceFile) AddGoImport(imp string) {
 }
 
 func (s *SourceFile) AddGirImport(name string) {
-	fullPath := girPkgPath + "/" + name
+	fullPath := _girPkgPath + "/" + name
 	s.AddGoImport(fullPath)
 }
 

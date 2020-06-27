@@ -23,7 +23,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/electricface/go-gir3/cmd/girgen/xmlp"
@@ -32,7 +31,6 @@ import (
 
 func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	name := fi.Name()
-	log.Println("callback", name)
 
 	var paramNameTypes []string
 	var cParamTypeNames []string

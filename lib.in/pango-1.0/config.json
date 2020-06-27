@@ -1,0 +1,6 @@
+{
+  "Black": [
+    "log2vis_get_embedding_levels",
+    "AttrIterator.destroy"
+  ]
+}

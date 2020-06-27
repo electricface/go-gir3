@@ -24,6 +24,7 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"os"
 )
 
@@ -40,6 +41,7 @@ func loadConfig(filename string, cfg *config) error {
 		}
 		return err
 	}
+	log.Printf("load config %v ok", filename)
 	return json.Unmarshal(data, cfg)
 }
 

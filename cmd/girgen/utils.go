@@ -24,6 +24,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"unicode"
 )
@@ -170,4 +172,33 @@ func getConstructorName(containerName, fnName string) string {
 
 func markDeprecated(s *SourceFile) {
 	s.GoBody.Pn("// Deprecated\n//")
+}
+
+// copyFileContent copies the contents of the file named src to the file named
+// by dst. The file will be created if it does not already exist. If the
+// destination file exists, all it's contents will be replaced by the contents
+// of the source file.
+func copyFileContent(src, dst string) (err error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return
+	}
+	defer func() {
+		_ = in.Close()
+	}()
+	out, err := os.Create(dst)
+	if err != nil {
+		return
+	}
+	defer func() {
+		cErr := out.Close()
+		if err == nil {
+			err = cErr
+		}
+	}()
+	if _, err = io.Copy(out, in); err != nil {
+		return
+	}
+	err = out.Sync()
+	return
 }

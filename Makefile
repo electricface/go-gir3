@@ -1,4 +1,5 @@
-G_DIR=/home/tp1/go/src/github.com/electricface/go-gir/g-2.0
+export GIR_PKG_PATH := github.com/electricface/go-gir
+G_DIR=/home/tp1/go/src/$(GIR_PKG_PATH)/g-2.0
 
 girgen:
 	go build -o girgen -v github.com/electricface/go-gir3/cmd/girgen
