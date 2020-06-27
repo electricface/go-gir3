@@ -25,9 +25,14 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
+
+	"golang.org/x/xerrors"
 )
 
 func strSliceContains(slice []string, str string) bool {
@@ -201,4 +206,155 @@ func copyFileContent(src, dst string) (err error) {
 	}
 	err = out.Sync()
 	return
+}
+
+func getGoPath() string {
+	gopath := os.Getenv("GOPATH")
+	paths := strings.Split(gopath, ":")
+	if len(paths) > 0 {
+		return strings.TrimSpace(paths[0])
+	}
+	log.Fatal("do not set env var GOPATH")
+	return ""
+}
+
+// cleanFiles 删除目录 dir 下的所有文件
+func cleanFiles(dir string) error {
+	fileInfoList, err := ioutil.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return xerrors.Errorf("read lib.in dir: %w", err)
+		}
+	} else {
+		// 删除 dir 文件夹下所有文件
+		for _, info := range fileInfoList {
+			file := filepath.Join(dir, info.Name())
+			log.Println("remove file", file)
+			err = os.Remove(file)
+			if err != nil {
+				return xerrors.Errorf("remove file: %w")
+			}
+		}
+	}
+	return nil
+}
+
+func syncFilesToLibIn(libInDir, outDir string) error {
+	// sync go-gir -> lib.in
+	if _optNamespace == "GObject" || _optNamespace == "Gio" {
+		// 不多次复制，只处理 namespace 为 GLib 一次。
+		return nil
+	}
+
+	// 删除 libInDir 文件夹下所有文件
+	err := cleanFiles(libInDir)
+	if err != nil {
+		return xerrors.Errorf("clean files: %w", err)
+	}
+
+	fileInfoList, err := ioutil.ReadDir(outDir)
+	if err != nil {
+		return xerrors.Errorf("read out dir: %w", err)
+	}
+
+	// 复制 go-gir 文件夹下所有 .go 但是不是 _auto.go 的，所有 *config.json。
+
+	// 要复制的文件名列表
+	var srcNames []string
+
+	for _, info := range fileInfoList {
+		name := info.Name()
+		ext := filepath.Ext(name)
+		if (ext == ".go" && !strings.HasSuffix(name, "_auto.go")) ||
+			strings.HasSuffix(name, "config.json") {
+
+			srcNames = append(srcNames, name)
+		}
+	}
+
+	if len(srcNames) == 0 {
+		return nil
+	}
+	err = os.Mkdir(libInDir, 0755)
+	if err != nil {
+		if !os.IsExist(err) {
+			return xerrors.Errorf("make dir: %w", err)
+		}
+	}
+	for _, name := range srcNames {
+		src := filepath.Join(outDir, name)
+		dst := filepath.Join(libInDir, name)
+		log.Printf("copy %s -> %s\n", src, dst)
+		err := copyFileContent(src, dst)
+		if err != nil {
+			return xerrors.Errorf("copy file content from %q to %q: %w", src, dst, err)
+		}
+	}
+
+	return nil
+}
+
+func syncFilesToOut(libInDir, outDir string) error {
+	// sync lib.in -> go-gir
+	if _optNamespace == "GObject" || _optNamespace == "Gio" {
+		// 不多次复制，只处理 namespace 为 GLib 一次。
+		return nil
+	}
+
+	// 删除 outDir 文件夹下所有文件
+	err := cleanFiles(outDir)
+	if err != nil {
+		return xerrors.Errorf("clean files: %w", err)
+	}
+
+	fileInfoList, err := ioutil.ReadDir(libInDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return xerrors.Errorf("read dir: %w", err)
+		}
+	} else {
+		for _, info := range fileInfoList {
+			name := info.Name()
+			ext := filepath.Ext(name)
+			if ext != ".go" && ext != ".json" {
+				// 只复制 .go 和 .json 文件
+				continue
+			}
+
+			src := filepath.Join(libInDir, name)
+			dst := filepath.Join(outDir, name)
+			log.Printf("copy %s -> %s\n", src, dst)
+			err = copyFileContent(src, dst)
+			if err != nil {
+				return xerrors.Errorf("copy file content from %q to %q: %w", src, dst, err)
+			}
+		}
+	}
+	return nil
+}
+
+// flag --sync-gi
+func syncLibGiToOut() error {
+	gopath := getGoPath()
+	outDir := filepath.Join(gopath, "src", _girPkgPath, "gi")
+	err := cleanFiles(outDir)
+	if err != nil {
+		return xerrors.Errorf("clean files: %w", err)
+	}
+
+	const giDir = "./gi-lite"
+	fileInfos, err := ioutil.ReadDir(giDir)
+	if err != nil {
+		return xerrors.Errorf("read dir: %w", err)
+	}
+	for _, info := range fileInfos {
+		src := filepath.Join(giDir, info.Name())
+		dst := filepath.Join(outDir, info.Name())
+		log.Printf("copy %s -> %s\n", src, dst)
+		err = copyFileContent(src, dst)
+		if err != nil {
+			return xerrors.Errorf("copy file content from %q to %q: %w", src, dst, err)
+		}
+	}
+	return nil
 }

@@ -46,8 +46,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/linuxdeepin/go-gir/gi"
 	"github.com/linuxdeepin/go-gir/util"
+	"github.com/linuxdeepin/go-gir/gi"
 )
 
 type closureContext struct {
@@ -564,3 +564,4 @@ func (v Object) GetClass() ObjectClass {
 func (v ObjectClass) p() *C.GObjectClass {
 	return (*C.GObjectClass)(v.P)
 }
+

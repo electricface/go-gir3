@@ -22,10 +22,8 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -35,10 +33,9 @@ import (
 
 	"github.com/electricface/go-gir3/cmd/girgen/xmlp"
 	"github.com/electricface/go-gir3/gi"
-	"golang.org/x/xerrors"
 )
 
-var _girPkgPath = "github.com/electricface/go-gir"
+var _girPkgPath = "github.com/linuxdeepin/go-gir"
 
 const fileHeader = `/*
  * Copyright (C) 2019 ~ $year Uniontech Software Technology Co.,Ltd
@@ -71,6 +68,7 @@ var _optDir string
 var _optOutputFile string
 var _optCfgFile string
 var _optPkg string
+var _optSyncGi bool
 
 func init() {
 	log.SetFlags(log.Lshortfile)
@@ -80,6 +78,7 @@ func init() {
 	flag.StringVar(&_optOutputFile, "f", "", "output file")
 	flag.StringVar(&_optCfgFile, "c", "", "config file")
 	flag.StringVar(&_optPkg, "p", "", "package")
+	flag.BoolVar(&_optSyncGi, "sync-gi", false, "sync gi to out dir")
 }
 
 var _structNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
@@ -89,141 +88,24 @@ var _cfg *config
 var _sourceFile *SourceFile
 var _xRepo *xmlp.Repository
 
-func getGoPath() string {
-	gopath := os.Getenv("GOPATH")
-	paths := strings.Split(gopath, ":")
-	if len(paths) > 0 {
-		return strings.TrimSpace(paths[0])
-	}
-	return ""
-}
-
-func syncFilesToLibIn(libInDir, outDir string) error {
-	// sync go-gir -> lib.in
-	if _optNamespace == "GObject" || _optNamespace == "Gio" {
-		// 不多次复制，只处理 namespace 为 GLib 一次。
-		return nil
-	}
-
-	fileInfoList, err := ioutil.ReadDir(libInDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return xerrors.Errorf("read lib.in dir: %w", err)
-		}
-	} else {
-		// 删除 libInDir 文件夹下所有文件
-		for _, info := range fileInfoList {
-			file := filepath.Join(libInDir, info.Name())
-			log.Println("remove file", file)
-			err = os.Remove(file)
-			if err != nil {
-				return xerrors.Errorf("remove file: %w")
-			}
-		}
-	}
-
-	fileInfoList, err = ioutil.ReadDir(outDir)
-	if err != nil {
-		return xerrors.Errorf("read out dir: %w", err)
-	}
-
-	// 复制 go-gir 文件夹下所有 .go 但是不是 _auto.go 的，所有 *config.json。
-
-	// 要复制的文件名列表
-	var srcNames []string
-
-	for _, info := range fileInfoList {
-		name := info.Name()
-		ext := filepath.Ext(name)
-		if (ext == ".go" && !strings.HasSuffix(name, "_auto.go")) ||
-			strings.HasSuffix(name, "config.json") {
-
-			srcNames = append(srcNames, name)
-		}
-	}
-
-	if len(srcNames) == 0 {
-		return nil
-	}
-	err = os.Mkdir(libInDir, 0755)
-	if err != nil {
-		if !os.IsExist(err) {
-			return xerrors.Errorf("make dir: %w", err)
-		}
-	}
-	for _, name := range srcNames {
-		src := filepath.Join(outDir, name)
-		dst := filepath.Join(libInDir, name)
-		log.Printf("copy %s -> %s\n", src, dst)
-		err := copyFileContent(src, dst)
-		if err != nil {
-			return xerrors.Errorf("copy file content from %q to %q: %w", src, dst, err)
-		}
-	}
-
-	return nil
-}
-
-func syncFilesToOut(libInDir, outDir string) error {
-	// sync lib.in -> go-gir
-	if _optNamespace == "GObject" || _optNamespace == "Gio" {
-		// 不多次复制，只处理 namespace 为 GLib 一次。
-		return nil
-	}
-	fileInfoList, err := ioutil.ReadDir(outDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return xerrors.Errorf("read dir: %w", err)
-		}
-	} else {
-		for _, info := range fileInfoList {
-			file := filepath.Join(outDir, info.Name())
-			log.Println("remove file", file)
-			err = os.Remove(file)
-			if err != nil {
-				return xerrors.Errorf("remove file: %w", err)
-			}
-		}
-	}
-
-	fileInfoList, err = ioutil.ReadDir(libInDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return xerrors.Errorf("read dir: %w", err)
-		}
-	} else {
-		for _, info := range fileInfoList {
-			name := info.Name()
-			ext := filepath.Ext(name)
-			if ext != ".go" && ext != ".json" {
-				// 只复制 .go 和 .json 文件
-				continue
-			}
-
-			src := filepath.Join(libInDir, name)
-			dst := filepath.Join(outDir, name)
-			log.Printf("copy %s -> %s\n", src, dst)
-			err = copyFileContent(src, dst)
-			if err != nil {
-				return xerrors.Errorf("copy file content from %q to %q: %w", src, dst, err)
-			}
-		}
-	}
-	return nil
-}
-
 func main() {
+	flag.Parse()
+
+	if _optSyncGi {
+		err := syncLibGiToOut()
+		if err != nil {
+			log.Fatalf("failed to sync lib gi to out: %v", err)
+		}
+		return
+	}
+
 	envGirPkgPath := os.Getenv("GIR_PKG_PATH")
 	if envGirPkgPath != "" {
 		_girPkgPath = envGirPkgPath
 	}
 
-	flag.Parse()
 	if _optDir == "" {
 		gopath := getGoPath()
-		if gopath == "" {
-			log.Fatal(errors.New("do not set env var GOPATH"))
-		}
 		_optDir = filepath.Join(gopath, "src", _girPkgPath,
 			strings.ToLower(_optNamespace+"-"+_optVersion))
 	}
