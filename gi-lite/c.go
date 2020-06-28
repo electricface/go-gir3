@@ -314,6 +314,30 @@ func (si StructInfo) FindMethod(name string) FunctionInfo {
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 
+// g_struct_info_get_field
+func (si StructInfo) Field(n int) FieldInfo {
+	ret := C.g_struct_info_get_field(si.p(), C.gint(n))
+	return WrapFieldInfo(unsafe.Pointer(ret))
+}
+
+// g_struct_info_get_n_fields
+func (si StructInfo) NumFields() int {
+	ret := C.g_struct_info_get_n_fields(si.p())
+	return int(ret)
+}
+
+func (si StructInfo) FindField(name string) FieldInfo {
+	num := si.NumFields()
+	for i := 0; i < num; i++ {
+		fi := si.Field(i)
+		if fi.Name() == name {
+			return fi
+		}
+		fi.Unref()
+	}
+	return FieldInfo{}
+}
+
 // g_struct_info_get_n_methods
 func (si StructInfo) NumMethods() int {
 	return int(C.g_struct_info_get_n_methods(si.p()))
@@ -357,6 +381,30 @@ func (ui UnionInfo) Method(index int) FunctionInfo {
 	return WrapFunctionInfo(unsafe.Pointer(ret))
 }
 
+// g_union_info_get_field
+func (ui UnionInfo) Field(n int) FieldInfo {
+	ret := C.g_union_info_get_field(ui.p(), C.gint(n))
+	return WrapFieldInfo(unsafe.Pointer(ret))
+}
+
+// g_union_info_get_n_fields
+func (ui UnionInfo) NumFields() int {
+	ret := C.g_union_info_get_n_fields(ui.p())
+	return int(ret)
+}
+
+func (ui UnionInfo) FindField(name string) FieldInfo {
+	num := ui.NumFields()
+	for i := 0; i < num; i++ {
+		fi := ui.Field(i)
+		if fi.Name() == name {
+			return fi
+		}
+		fi.Unref()
+	}
+	return FieldInfo{}
+}
+
 func (rti RegisteredTypeInfo) p() *C.GIRegisteredTypeInfo {
 	return (*C.GIRegisteredTypeInfo)(rti.P)
 }
@@ -393,6 +441,31 @@ func (fi FunctionInfo) PrepInvoker() (Invoker, error) {
 		return Invoker{}, goErr
 	}
 	return Invoker{c: &cInvoker}, nil
+}
+
+type FieldInfo struct {
+	BaseInfo
+}
+
+func WrapFieldInfo(p unsafe.Pointer) (ret FieldInfo) {
+	ret.P = p
+	return
+}
+
+func (fi FieldInfo) p() *C.GIFieldInfo {
+	return (*C.GIFieldInfo)(fi.P)
+}
+
+func (fi FieldInfo) GetField(mem unsafe.Pointer) (Argument, bool) {
+	var value C.GIArgument
+	ret := C.g_field_info_get_field(fi.p(), C.gpointer(mem), &value)
+
+	ok := Int2Bool(int(ret))
+	if ok {
+		arg := *(*Argument)(unsafe.Pointer(&value))
+		return arg, true
+	}
+	return Argument{}, false
 }
 
 func (invoker Invoker) Call(args []Argument, retVal *Argument, pOutArgs *Argument) {
