@@ -81,6 +81,19 @@ func snake2Camel(name string) string {
 	return out.String()
 }
 
+func toCamelCase(name, sep string) string {
+	var out bytes.Buffer
+	for _, word := range strings.Split(name, sep) {
+		if word == "" {
+			continue
+		}
+		word = strings.ToLower(word)
+		out.WriteString(strings.ToUpper(word[0:1]))
+		out.WriteString(word[1:])
+	}
+	return out.String()
+}
+
 var _keywords = []string{
 	// Go 语言关键字:
 	"break", "default", "func", "interface", "select",

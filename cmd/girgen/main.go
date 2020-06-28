@@ -27,6 +27,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +88,7 @@ var _deps []string
 var _cfg *config
 var _sourceFile *SourceFile
 var _xRepo *xmlp.Repository
+var _sigNamesMap = make(map[string]struct{})
 
 func main() {
 	flag.Parse()
@@ -300,7 +302,6 @@ func main() {
 
 			//case gi.INFO_TYPE_BOXED:
 			//case gi.INFO_TYPE_VALUE:
-			//case gi.INFO_TYPE_SIGNAL:
 			//case gi.INFO_TYPE_VFUNC:
 			//case gi.INFO_TYPE_PROPERTY:
 			//case gi.INFO_TYPE_FIELD:
@@ -316,6 +317,8 @@ func main() {
 		sourceFile.GoBody.Pn("%s = %s", constants[i], constants[i+1])
 	}
 	sourceFile.GoBody.Pn(")")
+
+	pSignalNameConstants(sourceFile)
 
 	if _optNamespace == "GLib" || _optNamespace == "GObject" {
 		err = saveGenState(genStateFile, &genState{
@@ -372,6 +375,30 @@ func main() {
 
 	log.Printf("stat %v TODO/ALL %d/%d %.2f%%\n", _optNamespace, _numTodoFunc, _numFunc,
 		float64(_numTodoFunc)/float64(_numFunc)*100)
+}
+
+func pSignal(si *gi.SignalInfo) {
+	name := si.Name()
+	_sigNamesMap[name] = struct{}{}
+}
+
+func pSignalNameConstants(sf *SourceFile) {
+	if len(_sigNamesMap) == 0 {
+		return
+	}
+	names := make([]string, len(_sigNamesMap))
+	i := 0
+	for sigName := range _sigNamesMap {
+		names[i] = sigName
+		i++
+	}
+	sort.Strings(names)
+	sf.GoBody.Pn("const (")
+	for _, sigName := range names {
+		name := toCamelCase(sigName, "-")
+		sf.GoBody.Pn("Sig%v = %q", name, sigName)
+	}
+	sf.GoBody.Pn(")") // end const
 }
 
 func pConstant(constants []string, ci *gi.ConstantInfo) []string {
@@ -546,6 +573,12 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo, idxLv1 int) {
 		fi := ii.Method(idxLv2)
 		pFunction(s, fi, idxLv1, idxLv2)
 	}
+
+	numSig := ii.NumSignal()
+	for i := 0; i < numSig; i++ {
+		si := ii.Signal(i)
+		pSignal(si)
+	}
 }
 
 //  isParentImplIfc 返回是否父类型实现了 ifcInfo 接口
@@ -623,6 +656,12 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo, idxLv1 int) {
 	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
 		fi := oi.Method(idxLv2)
 		pFunction(s, fi, idxLv1, idxLv2)
+	}
+
+	numSig := oi.NumSignal()
+	for i := 0; i < numSig; i++ {
+		si := oi.Signal(i)
+		pSignal(si)
 	}
 }
 

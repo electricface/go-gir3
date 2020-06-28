@@ -38,7 +38,6 @@ static GObjectClass * _g_object_get_class (GObject *object) {
 */
 import "C"
 import (
-	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -46,7 +45,6 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/linuxdeepin/go-gir/util"
 	"github.com/linuxdeepin/go-gir/gi"
 )
 
@@ -55,8 +53,6 @@ type closureContext struct {
 }
 
 var (
-	errNilPtr = errors.New("cgo returned unexpected nil pointer")
-
 	closures = struct {
 		sync.RWMutex
 		m map[unsafe.Pointer]closureContext
@@ -210,7 +206,7 @@ func (v Object) connectClosure(after bool, detailedSignal string, f interface{})
 	closure := ClosureNew(f)
 
 	c := C.g_signal_connect_closure(C.gpointer(v.P),
-		(*C.gchar)(cstr), closure.native(), C.gboolean(util.Bool2Int(after)))
+		(*C.gchar)(cstr), closure.native(), C.gboolean(gi.Bool2Int(after)))
 	handle := SignalHandle(c)
 
 	// Map the signal handle to the closure.
@@ -549,7 +545,7 @@ func (v Value) Type() gi.GType {
 // IsValid 检查 Value 是否合法和已经初始化了。
 func (v Value) IsValid() bool {
 	ret := C._g_is_value(v.p())
-	return util.Int2Bool(int(ret))
+	return gi.Int2Bool(int(ret))
 }
 
 func (v Object) p() *C.GObject {
@@ -564,4 +560,3 @@ func (v Object) GetClass() ObjectClass {
 func (v ObjectClass) p() *C.GObjectClass {
 	return (*C.GObjectClass)(v.P)
 }
-
