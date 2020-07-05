@@ -434,14 +434,14 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 		markDeprecated(s)
 	}
 	name := ei.Name()
-	type0 := name
+	var type0 string
 	if isEnum {
 		s.GoBody.Pn("// Enum %v", name)
-		type0 = getEnumTypeName(type0)
+		type0 = getEnumTypeName(name)
 	} else {
 		// is Flags
 		s.GoBody.Pn("// Flags %v", name)
-		type0 = getFlagsTypeName(type0)
+		type0 = getFlagsTypeName(name)
 	}
 	s.GoBody.Pn("type %s int", type0)
 	s.GoBody.Pn("const (")
@@ -450,6 +450,10 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 		value := ei.Value(i)
 		val := value.Value()
 		memberName := name + snake2Camel(value.Name())
+		if memberName == type0 {
+			// 成员和类型重名了
+			memberName += "0"
+		}
 		s.GoBody.Pn("%s %s = %v", memberName, type0, val)
 		value.Unref()
 	}
