@@ -87,7 +87,7 @@ var _symbolNameMap = make(map[string]string)    // 键是 c 符号， value 是�
 var _deps []string
 var _cfg *config
 var _sourceFile *SourceFile
-var _xRepo *xmlp.Repository
+
 var _sigNamesMap = make(map[string]struct{})
 
 func main() {
@@ -200,7 +200,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_xRepo = xRepo
 
 	deps := getAllDeps(repo, _optNamespace)
 	log.Printf("deps: %#v\n", deps)

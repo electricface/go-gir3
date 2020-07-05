@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/electricface/go-gir3/cmd/girgen/xmlp"
 	"github.com/electricface/go-gir3/gi"
 )
 
@@ -326,13 +325,7 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 
 func getCIdentifierPrefix(bi *gi.BaseInfo) string {
 	ns := bi.Namespace()
-
-	if ns == _xRepo.Namespace.Name {
-		return _xRepo.Namespace.CIdentifierPrefixes
-	}
-
-	repo := xmlp.GetLoadedRepo(ns)
-	return repo.Namespace.CIdentifierPrefixes
+	return gi.DefaultRepository().CPrefix(ns)
 }
 
 func getCTypeWithTag(tag gi.TypeTag) (type0 string) {
