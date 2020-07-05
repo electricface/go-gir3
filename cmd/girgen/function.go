@@ -180,8 +180,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			} else {
 				//b.Pn("// num arg is 0")
 				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
-				// 但是 Go 里没有类的概念，于是直接忽略这个方法了，但任然会为在 namespace 顶层的 io_channel_error_quark 方法自动生成代码。
-				return
+				fnName = container.Name() + fnName + "1"
 			}
 		}
 
