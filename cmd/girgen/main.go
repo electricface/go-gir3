@@ -36,7 +36,7 @@ import (
 	"github.com/electricface/go-gir3/gi"
 )
 
-var _girPkgPath = "github.com/linuxdeepin/go-gir"
+var _girPkgPath = "github.com/electricface/go-gir"
 
 const fileHeader = `/*
  * Copyright (C) 2019 ~ $year Uniontech Software Technology Co.,Ltd

@@ -1,7 +1,7 @@
 package gtk
 
 import (
-	"github.com/linuxdeepin/go-gir/gi"
+	"github.com/electricface/go-gir/gi"
 	"log"
 	"unsafe"
 )
