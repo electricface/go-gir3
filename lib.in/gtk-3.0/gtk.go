@@ -18,3 +18,13 @@ func Init(argc int, argv int) {
 	args := []gi.Argument{arg_argc, arg_argv}
 	iv.Call(args, nil, &outArgs[0])
 }
+
+// [ cellRenderer ] trans: nothing
+func NewTreeViewColumnWithAttribute(title string, cellRenderer ICellRenderer, attribute string,
+	column int32) TreeViewColumn {
+	col := NewTreeViewColumn()
+	col.SetTitle(title)
+	col.PackStart(cellRenderer, true)
+	col.AddAttribute(cellRenderer, attribute, column)
+	return col
+}
