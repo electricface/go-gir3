@@ -1,3 +1,4 @@
 /girgen
-/.idea/
+/gen_array_code
+/.idea
 *.log

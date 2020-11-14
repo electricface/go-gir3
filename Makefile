@@ -1,8 +1,15 @@
 export GIR_PKG_PATH := github.com/linuxdeepin/go-gir
 G_DIR=/home/tp1/go/src/$(GIR_PKG_PATH)/g-2.0
+git_project_root=$(shell git rev-parse --show-toplevel)
 
 girgen:
 	go build -o girgen -v github.com/electricface/go-gir3/cmd/girgen
+
+gen_array_code:
+	go build -o gen_array_code -v github.com/electricface/go-gir3/cmd/gen_array_code
+	./gen_array_code > $(git_project_root)/gi-lite/arr_auto.go
+	go fmt $(git_project_root)/gi-lite/arr_auto.go
+	go build -v github.com/electricface/go-gir3/gi-lite
 
 sync_gi:
 	./girgen -sync-gi
@@ -75,8 +82,8 @@ vte-2.91:
 	./girgen -n Vte -v 2.91
 	# libvte-2.91-dev gir1.2-vte-2.91
 
-gtop-2.0:
-	./girgen -n GTop -v 2.0
+#gtop-2.0:
+#	./girgen -n GTop -v 2.0
 	#  libgtop2-dev gir1.2-gtop-2.0
 
 girepository-2.0:
@@ -125,4 +132,4 @@ gstnet-1.0:
 	./girgen -n GstNet -v 1.0
 	# libgstreamer1.0-dev gir1.2-gstreamer-1.0
 
-.PHONY: girgen
+.PHONY: girgen gen_array_code

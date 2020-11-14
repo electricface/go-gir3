@@ -22,6 +22,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"text/template"
@@ -33,7 +34,17 @@ type {{ .TypeName }}Array struct {
 	Len int
 }
 
-func New{{ .TypeName }}Array(values ...{{ .GoElemType }}) {{ .TypeName }}Array {
+func Make{{ .TypeName }}Array(length int) {{ .TypeName }}Array {
+	size := int(unsafe.Sizeof({{ .GoElemType }}(0))) * length
+	p := Malloc0(size)
+	arr := {{ .TypeName }}Array{
+		P: p,
+		Len: length,
+	}
+	return arr
+}
+
+func New{{ .TypeName }}Array(values []{{ .GoElemType }}) {{ .TypeName }}Array {
 	size := int(unsafe.Sizeof({{ .GoElemType }}(0))) * len(values)
 	p := Malloc(size)
 	arr := {{ .TypeName }}Array{
@@ -82,6 +93,13 @@ type params struct {
 }
 
 func main() {
+	// print header
+	fmt.Println(`// 本文件是用 gen_array_code 工具自动生成的
+package gi
+
+import "unsafe"
+`)
+
 	t1 := template.New("t1")
 	_, err := t1.Parse(templateTxt)
 	if err != nil {
