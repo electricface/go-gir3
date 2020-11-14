@@ -19,7 +19,7 @@ gen_g: glib-2.0 gobject-2.0 gio-2.0
 
 gen_gtk: atk-1.0 cairo-1.0 gdk-3.0 pango-1.0 gdk-pixbuf-2.0 gdk-pixdata-2.0 gtk-3.0 gtksource-4
 
-gen_other: gudev-1.0 pangocairo-1.0 vte-2.91 gtop-2.0 girepository-2.0 rsvg-2.0 poppler-0.18 atspi-2.0 udisks-2.0 gst-1.0 gstbase-1.0 gstcontroller-1.0 gstnet-1.0
+gen_other: gudev-1.0 pangocairo-1.0 vte-2.91 girepository-2.0 rsvg-2.0 poppler-0.18 atspi-2.0 udisks-2.0 gst-1.0 gstbase-1.0 gstcontroller-1.0 gstnet-1.0
 
 gen_all: sync_gi gen_g gen_gtk gen_other
 
@@ -84,8 +84,9 @@ vte-2.91:
 	# libvte-2.91-dev gir1.2-vte-2.91
 
 #gtop-2.0:
-#	./girgen -n GTop -v 2.0
-	#  libgtop2-dev gir1.2-gtop-2.0
+	#./girgen -n GTop -v 2.0
+	# libgtop2-dev gir1.2-gtop-2.0
+	# 调用 girgen 时有错误 XML syntax error on line 38: illegal character code U+0004
 
 girepository-2.0:
 	./girgen -n GIRepository -v 2.0
