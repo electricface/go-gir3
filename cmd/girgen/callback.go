@@ -43,7 +43,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		argInfo := fi.Arg(i)
 		argTypeInfo := argInfo.Type()
 
-		paramName := varReg.regParam(i, argInfo.Name())
+		paramName := varReg.registerParam(i, argInfo.Name())
 		dir := argInfo.Direction()
 		switch dir {
 		case gi.DIRECTION_IN:

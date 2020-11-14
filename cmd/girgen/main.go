@@ -84,7 +84,10 @@ func init() {
 
 var _structNamesMap = make(map[string]struct{}) // 键是所有 struct 类型名。
 var _symbolNameMap = make(map[string]string)    // 键是 c 符号， value 是方法名，是调整过的方法名。
+
+// 它是 getAllDeps() 的返回结果
 var _deps []string
+
 var _cfg *config
 var _sourceFile *SourceFile
 

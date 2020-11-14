@@ -92,6 +92,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	container := fi.Container()
 	if container != nil {
 		identifyName = container.Name() + "." + fiName
+		defer container.Unref()
 	}
 	if strSliceContains(_cfg.Black, identifyName) {
 		b.Pn("\n// black function %s\n", identifyName)
@@ -114,18 +115,22 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	// 目标函数返回参数列表，元素是 "名字 类型"
 	var retParams []string
 
-	// 准备传递给 invoker.Call 中的参数的代码之前的语句
+	// 准备传递给 invoker.Call 中的参数的代码之前的语句, 在 newArgLines 之前的语句。
 	var beforeArgLines []string
 	// 准备传递给 invoker.Call 中的参数的语句
 	var newArgLines []string
-	// 传递给 invoker.Call 中的参数列表
+	// 传递给 invoker.Call 的参数列表
 	var argNames []string
 
 	// 在 invoker.Call 执行后需要执行的语句
 	var afterCallLines []string
 
+	// 设置生成 Go 函数的返回值变量的语句
+	// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
+	// 或 param1.P = outArgs[1].Pointer()
 	var setParamLines []string
 
+	// 在 return 返回之前的语句
 	var beforeRetLines []string
 
 	// direction 为 inout 或 out 的参数个数
@@ -133,9 +138,11 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	var outArgIdx int
 
 	var varOutArgs string
+
+	// 函数接收者部分
 	var receiver string
 
-	// 如果为 true，则 C 函数函数中最后一个是 **GError err
+	// 是否抛出错误，如果为 true，则 C 函数中最后一个参数是 **GError err
 	var isThrows bool
 
 	fnFlags := fi.Flags()
@@ -185,7 +192,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 
 		if addReceiver {
-			// 容器是 interface 类型的
+			// 容器是否是 interface 类型的
 			isContainerIfc := false
 			if container.Type() == gi.INFO_TYPE_INTERFACE {
 				isContainerIfc = true
@@ -214,7 +221,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	numArgs := fi.NumArg()
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
-		paramName := varReg.regParam(i, argInfo.Name())
+		paramName := varReg.registerParam(i, argInfo.Name())
 
 		paramComment := fmt.Sprintf("[ %v ] trans: %v", paramName, argInfo.OwnershipTransfer())
 		dir := argInfo.Direction()
@@ -227,16 +234,17 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 		typeTag := argType.Tag()
 		if typeTag == gi.TYPE_TAG_ARRAY {
-			lenArgIdx := argType.ArrayLength()
+			lenArgIdx := argType.ArrayLength() // 是该参数的长度参数的 index
 			if lenArgIdx >= 0 {
 				lenArgMap[lenArgIdx] = struct{}{}
-				//b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
+				// b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
 			}
 		}
 
 		argType.Unref()
 		argInfo.Unref()
 	}
+
 	retTypeInfo := fi.ReturnType()
 	defer retTypeInfo.Unref()
 	retTypeTag := retTypeInfo.Tag()
@@ -248,6 +256,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 	}
 
+	// 开始处理每个参数
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
 		argTypeInfo := argInfo.Type()
@@ -256,7 +265,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 		switch dir {
 		case gi.DIRECTION_INOUT, gi.DIRECTION_OUT:
-			var asRet bool
+			var asRet bool // 该参数是否作为生成 Go 函数的返回值
 			if dir == gi.DIRECTION_INOUT {
 				asRet = true
 			} else {
@@ -296,7 +305,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			params = append(params, paramName+" "+type0)
 
 		} else if dir == gi.DIRECTION_OUT {
-			// 作为目标函数的返回值之一
+			// 处理方向为 out 的参数
 			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg, isCallerAlloc,
 				argInfo.OwnershipTransfer())
 			type0 := parseResult.type0
@@ -305,6 +314,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				afterCallLines = append(afterCallLines,
 					fmt.Sprintf("var %v %v; _ = %v", paramName, type0, paramName))
 			} else if parseResult.isRet {
+				// 作为目标函数的返回值之一
 				retParams = append(retParams, paramName+" "+type0)
 			}
 
@@ -318,29 +328,27 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				setParamLine := fmt.Sprintf("%v%v = %v",
 					paramName, parseResult.field, getValExpr)
 
-				if parseResult.needTypeCast {
+				if parseResult.needTypeCast { // 如果需要加上类型转换
 					setParamLine = fmt.Sprintf("%v%v = %v(%s)",
 						paramName, parseResult.field, type0, getValExpr)
 				}
 
-				// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
-				// 或 param1.P = outArgs[1].Pointer()
 				setParamLines = append(setParamLines, setParamLine)
 				outArgIdx++
 			} else {
-				// out 类型的参数，依旧作为目标函数的参数，一般是指针类型
+				// out 类型的参数，但依旧作为生成 Go 函数的参数，一定是指针类型
 				params = append(params, paramName+" "+parseResult.type0)
 				newArgLines = append(newArgLines,
 					fmt.Sprintf("%v := gi.NewPointerArgument(%v)", varArg, parseResult.expr))
 			}
 
 			beforeRetLines = append(beforeRetLines, parseResult.beforeRetLines...)
-
 		}
 
 		argTypeInfo.Unref()
 		argInfo.Unref()
 	}
+
 	if isThrows {
 		numOutArgs++
 		if varOutArgs == "" {
@@ -374,6 +382,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			"[ %v ] trans: %v", varResult, fi.CallerOwns()), "")
 	}
 
+	// 目标函数为生成的 Go 函数
+	// 输出目标函数前面的注释文档
 	for _, line := range commentLines {
 		b.Pn("// %v", line)
 	}
@@ -405,9 +415,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	// flags: 0 or gi.FindMethodNoCallFind
 	getArgs := []interface{}{funcIdx} // id
 	if useGet1 {
+		// Get1 比 Get 多了一个 ns 参数。
 		getArgs = append(getArgs, strconv.Quote(_optNamespace)) // ns
 	}
-	// nameLv1, nameLv2
+	// 处理 nameLv1, nameLv2 参数
 	if container == nil {
 		getArgs = append(getArgs, strconv.Quote(fiName)) // nameLv1
 		getArgs = append(getArgs, `""`)                  // nameLv2
@@ -419,7 +430,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	getArgs = append(getArgs, idxLv1) // idxLv1
 	getArgs = append(getArgs, idxLv2) // idxLv2
 
-	// infoType
+	// 处理 infoType 参数
 	infoType := "FUNCTION"
 	if container != nil {
 		switch container.Type() {
@@ -435,6 +446,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	}
 	getArgs = append(getArgs, "gi.INFO_TYPE_"+infoType) // infoType
 
+	// 处理 flags 参数
 	findMethodFlags := "0"
 	if _optNamespace == "GObject" && container != nil && container.Name() == "ObjectClass" {
 		// 因为调用 StructInfo.FindMethod 方法去查找 GObject.ObjectClass 的方法会导致崩溃，所以加上这个 flag 来规避。
@@ -442,6 +454,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	}
 	getArgs = append(getArgs, findMethodFlags) // flags
 
+	// 输出 _I.Get 调用
 	b.P("%v, %v := _I.Get", varInvoker, varErr)
 	if useGet1 {
 		b.P("1")
@@ -479,7 +492,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		b.Pn(line)
 	}
 
-	callArgArgs := "nil"
+	callArgArgs := "nil" // 用于 iv.Call 的第一个参数，由它传入 C 函数的所有参数
 	if len(argNames) > 0 {
 		// 比如输出 args := []gi.Argument{arg0,arg1}
 		varArgs := varReg.alloc("args")
@@ -487,13 +500,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		callArgArgs = varArgs
 	}
 
-	callArgRet := "nil"
+	callArgRet := "nil" // 用于 iv.Call 的第二个参数，由它传入 C 函数的返回值
 	if !isRetVoid {
 		// 有返回值
 		callArgRet = "&" + varRet
 		b.Pn("var %s gi.Argument", varRet)
 	}
-	callArgOutArgs := "nil"
+	callArgOutArgs := "nil" // 用于 iv.Call 的第三个参数
 	if numOutArgs > 0 {
 		callArgOutArgs = fmt.Sprintf("&%s[0]", varOutArgs)
 	}
@@ -508,6 +521,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	}
 
 	if !isRetVoid && parseRetTypeResult != nil {
+		// 设置返回值 result
 		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
 		if parseRetTypeResult.zeroTerm {
 			b.Pn("%v.SetLenZT()", varResult)
@@ -522,8 +536,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		b.Pn("return")
 	}
 
-	b.Pn("}") // end func
-	if b.containsTodo() {
+	b.Pn("}")             // end func
+	if b.containsTodo() { // 检查生成的代码里是否含有 TO-DO，如果有表示没处理好这个函数。
 		_numTodoFunc++
 	}
 	s.GoBody.addBlock(b)
@@ -1205,6 +1219,7 @@ func getGLibType(type0 string) string {
 	}
 }
 
+// 判断命名空间 ns 是否和当前命名空间一样。
 func isSameNamespace(ns string) bool {
 	if ns == _optNamespace {
 		return true
@@ -1229,6 +1244,8 @@ func getTypeName(bi *gi.BaseInfo) string {
 	return pkgPrefix + bi.Name()
 }
 
+// 根据命名空间 ns （不含版本）获取Go语言包的前缀，比如 ns 为 Gtk， 结果为 "gtk."。
+// 还有自动导入 ns 指代的 Go语言包功能。
 func getPkgPrefix(ns string) string {
 	if isSameNamespace(ns) {
 		return ""
@@ -1251,6 +1268,7 @@ func getPkgPrefix(ns string) string {
 	return ret
 }
 
+// 给生成源代码的 import 部分加上 github.com/linuxdeepin/go-gir/g-2.0 这样的包。
 func addGirImport(ns string) {
 	pkgBase := ""
 	for _, dep := range _deps {
@@ -1264,6 +1282,7 @@ func addGirImport(ns string) {
 	}
 }
 
+// 获取 namespace 的所有依赖，比如 Atk-1.0 的依赖是 GObject-2.0 和 GLib-2.0。
 func getAllDeps(repo *gi.Repository, namespace string) []string {
 	if namespace == "" {
 		namespace = _optNamespace
@@ -1284,11 +1303,13 @@ func getAllDeps(repo *gi.Repository, namespace string) []string {
 		return nil
 	}
 
+	// 收集结果并去重
 	resultMap := make(map[string]struct{})
 	for _, dep := range deps {
 		resultMap[dep] = struct{}{}
 	}
 	for _, dep := range deps {
+		// 递归获取每个依赖 dep 的所有依赖，然后加入 resultMap
 		deps0 := getAllDeps(repo, dep)
 		for _, dep0 := range deps0 {
 			resultMap[dep0] = struct{}{}

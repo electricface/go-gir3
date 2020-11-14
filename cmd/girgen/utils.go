@@ -129,7 +129,7 @@ type varNameIdx struct {
 	idx  int
 }
 
-func (vr *VarReg) regParam(idx int, name string) string {
+func (vr *VarReg) registerParam(idx int, name string) string {
 	if vr.paramMap == nil {
 		vr.paramMap = make(map[int]string)
 	}
