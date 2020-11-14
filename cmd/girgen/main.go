@@ -109,8 +109,8 @@ func main() {
 		_girPkgPath = envGirPkgPath
 	}
 
+	gopath := getGoPath()
 	if _optDir == "" {
-		gopath := getGoPath()
 		_optDir = filepath.Join(gopath, "src", _girPkgPath,
 			strings.ToLower(_optNamespace+"-"+_optVersion))
 	}
@@ -122,7 +122,7 @@ func main() {
 
 	outFile := filepath.Join(_optDir, pkg+"_auto.go")
 	if _optOutputFile != "" {
-		outFile = _optOutputFile
+		outFile = strings.Replace(_optOutputFile, "%GOPATH%", gopath, 1)
 	}
 	log.Print("outFile:", outFile)
 

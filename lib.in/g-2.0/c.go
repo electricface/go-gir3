@@ -264,7 +264,7 @@ func (v List) ForEach(fn func(item unsafe.Pointer)) {
 }
 
 func (v List) ForEachC(fn func(args interface{})) {
-	fnId := gi.RegisterFunc(fn)
+	fnId := gi.RegisterFunc(fn, 0)
 	C.g_list_foreach(v.p(), C.GFunc(GetPointer_myFunc()), C.gpointer(fnId))
 	gi.UnregisterFunc(fnId)
 }
@@ -466,7 +466,7 @@ func (v SList) ForEach(fn func(item unsafe.Pointer)) {
 }
 
 func (v SList) ForEachC(fn func(v interface{})) {
-	fnId := gi.RegisterFunc(fn)
+	fnId := gi.RegisterFunc(fn, 0)
 	C.g_slist_foreach(v.p(), C.GFunc(GetPointer_myFunc()), C.gpointer(fnId))
 	gi.UnregisterFunc(fnId)
 }

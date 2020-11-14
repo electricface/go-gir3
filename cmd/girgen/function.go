@@ -91,8 +91,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	identifyName := fiName
 	container := fi.Container()
 	if container != nil {
+		// NOTE: 注意不要调用 container 的 Unref 方法，fi.Container() 没有转移所有权。
 		identifyName = container.Name() + "." + fiName
-		defer container.Unref()
 	}
 	if strSliceContains(_cfg.Black, identifyName) {
 		b.Pn("\n// black function %s\n", identifyName)
@@ -219,6 +219,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	// lenArgMap 是数组长度参数的集合，键是长度参数的 index
 	lenArgMap := make(map[int]struct{})
 	numArgs := fi.NumArg()
+
+	// 键是 user_data 参数的索引，值是 callback 参数的索引，
+	// 提供一个从 user_data 参数找到 callback 参数的信息。
+	closureMap := make(map[int]int)
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
 		paramName := varReg.registerParam(i, argInfo.Name())
@@ -229,6 +233,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			paramComment += fmt.Sprintf(", dir: %v", dir)
 		}
 		commentLines = append(commentLines, paramComment, "")
+
+		closureIdx := argInfo.Closure() // 该参数的 user_data 的参数的索引
+		if closureIdx > 0 {
+			if argIdxStart == 1 {
+				closureIdx++
+			}
+			closureMap[closureIdx] = i
+		}
 
 		argType := argInfo.Type()
 
@@ -288,7 +300,17 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 			type0 := "int/*TODO:TYPE*/"
 			if dir == gi.DIRECTION_IN {
-				parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &varReg)
+				var callbackArgInfo *gi.ArgInfo
+				if callbackIdx, ok := closureMap[i]; ok {
+					callbackArgInfo = fi.Arg(callbackIdx)
+					paramName = varReg.alloc("fn")
+				}
+
+				parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &varReg, callbackArgInfo)
+
+				if callbackArgInfo != nil {
+					callbackArgInfo.Unref()
+				}
 
 				type0 = parseResult.type0
 				beforeArgLines = append(beforeArgLines, parseResult.beforeArgLines...)
@@ -302,7 +324,10 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				// TODO：处理 dir 为 inout 的
 			}
 
-			params = append(params, paramName+" "+type0)
+			if type0 != "" {
+				// 如果需要隐藏参数，则把它的类型设置为空。
+				params = append(params, paramName+" "+type0)
+			}
 
 		} else if dir == gi.DIRECTION_OUT {
 			// 处理方向为 out 的参数
@@ -1061,7 +1086,7 @@ type parseArgTypeDirInResult struct {
 	afterCallLines []string // 在 invoker.Call() 之后执行的语句
 }
 
-func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArgTypeDirInResult {
+func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackArgInfo *gi.ArgInfo) *parseArgTypeDirInResult {
 	// 处理 direction 为 in 的情况
 	var beforeArgLines []string
 	var afterCallLines []string
@@ -1112,6 +1137,30 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 			// ti 指的类型就是 void* , 翻译为 unsafe.Pointer
 			type0 = "unsafe.Pointer"
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s)", varArg)
+
+			if callbackArgInfo != nil {
+				type0 = "func(v interface{})"
+				varCId := varReg.alloc("cId")
+
+				scopeType := callbackArgInfo.Scope()
+				scope := "0"
+				switch scopeType {
+				case gi.SCOPE_TYPE_ASYNC:
+					scope = "gi.ScopeAsync"
+				case gi.SCOPE_TYPE_CALL:
+					scope = "gi.ScopeCall"
+				case gi.SCOPE_TYPE_NOTIFIED:
+					scope = "gi.ScopeNotified"
+				}
+
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v := gi.RegisterFunc(%v, %v)", varCId, varArg, scope))
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varCId)
+				// NOTE: 当 scope 为 async 时不能在 iv.Call 调用返回之后立即 unregister func，因为异步函数会立即返回，然后立即取消注册，应该延后到异步回调函数
+				// 运行之后再 unregister func。
+				if scopeType == gi.SCOPE_TYPE_CALL {
+					afterCallLines = append(afterCallLines, fmt.Sprintf("gi.UnregisterFunc(%v)", varCId))
+				}
+			}
 		}
 
 	case gi.TYPE_TAG_INTERFACE:
@@ -1145,7 +1194,7 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg) *parseArg
 				type0 = getEnumTypeName(getTypeName(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_CALLBACK {
-				type0 = getDebugType("CALLBACK")
+				type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(unsafe.Pointer(%vGetPointer_my%v()))",
 					getPkgPrefix(bi.Namespace()), bi.Name())
 			}

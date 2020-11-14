@@ -29,15 +29,32 @@ import (
 	"unsafe"
 )
 
+type Closure struct {
+	Fn    func(interface{})
+	Scope Scope
+}
+
+type Scope uint
+
+const (
+	ScopeInvalid Scope = iota
+	ScopeCall
+	ScopeAsync
+	ScopeNotified
+)
+
 var funcNextId uint
-var funcMap = make(map[uint]func(interface{}))
+var funcMap = make(map[uint]Closure)
 var funcMapMu sync.RWMutex
 
-func RegisterFunc(fn func(v interface{})) unsafe.Pointer {
+func RegisterFunc(fn func(v interface{}), scope Scope) unsafe.Pointer {
 	funcMapMu.Lock()
 
 	id := funcNextId
-	funcMap[id] = fn
+	funcMap[id] = Closure{
+		Fn:    fn,
+		Scope: scope,
+	}
 	funcNextId++
 
 	funcMapMu.Unlock()
@@ -50,11 +67,11 @@ func UnregisterFunc(fnId unsafe.Pointer) {
 	funcMapMu.Unlock()
 }
 
-func GetFunc(id uint) func(interface{}) {
+func GetFunc(id uint) Closure {
 	funcMapMu.RLock()
-	fn := funcMap[id]
+	c := funcMap[id]
 	funcMapMu.RUnlock()
-	return fn
+	return c
 }
 
 type InvokerCache struct {

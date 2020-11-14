@@ -111,8 +111,11 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	s.GoBody.Pn("func %v(%v) {", myFuncName, strings.Join(paramNameTypes, ", "))
 
 	if foundUserData {
-		varFn := varReg.alloc("fn")
-		s.GoBody.Pn("%v := gi.GetFunc(uint(uintptr(user_data)))", varFn)
+		varClosure := varReg.alloc("closure")
+		s.GoBody.Pn("%v := gi.GetFunc(uint(uintptr(user_data)))", varClosure)
+
+		s.GoBody.Pn("if %v.Fn != nil {", varClosure) // begin if 0
+
 		varArgs := varReg.alloc("args")
 		s.GoBody.Pn("%v := &%vStruct{", varArgs, name)
 		for _, line := range fieldSetLines {
@@ -120,7 +123,14 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		}
 
 		s.GoBody.Pn("}") // end struct
-		s.GoBody.Pn("%v(%v)", varFn, varArgs)
+		s.GoBody.Pn("%v.Fn(%v)", varClosure, varArgs)
+
+		// 回调函数调用之后
+		s.GoBody.Pn("if %v.Scope == gi.ScopeAsync {", varClosure) // begin if 1
+		s.GoBody.Pn("    gi.UnregisterFunc(unsafe.Pointer(user_data))")
+		s.GoBody.Pn("}") // end if 1
+
+		s.GoBody.Pn("}") // end if 0
 	} else {
 		// 没有 user_data 参数
 		// TODO

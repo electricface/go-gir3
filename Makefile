@@ -1,5 +1,6 @@
 export GIR_PKG_PATH := github.com/linuxdeepin/go-gir
-G_DIR=/home/tp1/go/src/$(GIR_PKG_PATH)/g-2.0
+G_DIR=%GOPATH%/src/$(GIR_PKG_PATH)/g-2.0
+# %GOPATH% 会在 girgen 中替换成 GOPATH 的第一个
 git_project_root=$(shell git rev-parse --show-toplevel)
 
 girgen:
