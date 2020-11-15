@@ -272,7 +272,10 @@ func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
 	// Create a new GClosure from f that invalidates itself when
 	// f returns false.  The error is ignored here, as this will
 	// always be a function.
-	closure := ClosureNew(fn)
+	f := func() interface{} {
+		return fn()
+	}
+	closure := ClosureNew(f)
 
 	// Set closure to run as a callback when the idle source runs.
 	C.g_source_set_closure(src, closure.native())
