@@ -268,3 +268,66 @@ type Ulong uint64
 
 var TypeInt = reflect.TypeOf(0)
 var TypeUint = reflect.TypeOf(uint(0))
+
+func Store(args []interface{}, destSlice ...interface{}) {
+	for i, arg := range args {
+		if i >= len(destSlice) {
+			break
+		}
+		dest := destSlice[i]
+		store(arg, dest)
+	}
+}
+
+func StoreStruct(args []interface{}, dest interface{}) {
+	rv := reflect.ValueOf(dest)
+	if rv.Kind() == reflect.Ptr {
+		elem := rv.Elem()
+		if elem.Kind() == reflect.Struct {
+			num := elem.NumField()
+			for i := 0; i < num; i++ {
+				if i >= len(args) {
+					break
+				}
+				src := args[i]
+				f := elem.Field(i)
+				store(src, f.Addr().Interface())
+			}
+		}
+	}
+}
+
+func store(src interface{}, dest interface{}) {
+	switch a := src.(type) {
+	case unsafe.Pointer:
+		left, ok := dest.(*unsafe.Pointer)
+		if ok {
+			*left = a
+		} else {
+			storeStructFieldP(dest, a)
+		}
+	default:
+		srcRv := reflect.ValueOf(src)
+		if srcRv.Kind() == reflect.Struct {
+			p := srcRv.FieldByName("P")
+			if p.Kind() == reflect.UnsafePointer {
+				// src 是有 P unsafe.Pointer 在字段的结构体，比如 g.Object
+				storeStructFieldP(dest, unsafe.Pointer(p.Pointer()))
+			}
+		}
+		// TODO: 支持更多的类型
+	}
+}
+
+func storeStructFieldP(dest interface{}, ptr unsafe.Pointer) {
+	rv := reflect.ValueOf(dest)
+	if rv.Kind() == reflect.Ptr {
+		elem := rv.Elem()
+		if elem.Kind() == reflect.Struct {
+			p := elem.FieldByName("P")
+			if p.IsValid() && p.Kind() == reflect.UnsafePointer {
+				p.SetPointer(ptr)
+			}
+		}
+	}
+}
