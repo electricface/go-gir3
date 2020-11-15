@@ -43,34 +43,34 @@ const (
 	ScopeNotified
 )
 
-var funcNextId uint
-var funcMap = make(map[uint]Closure)
-var funcMapMu sync.RWMutex
+var _funcNextId uint
+var _funcMap = make(map[uint]Closure)
+var _funcMapMu sync.RWMutex
 
-func RegisterFunc(fn func(v interface{}), scope Scope) unsafe.Pointer {
-	funcMapMu.Lock()
+func RegisterFunc(fn func(v interface{}), scope Scope) uint {
+	_funcMapMu.Lock()
 
-	id := funcNextId
-	funcMap[id] = Closure{
+	id := _funcNextId
+	_funcMap[id] = Closure{
 		Fn:    fn,
 		Scope: scope,
 	}
-	funcNextId++
+	_funcNextId++
 
-	funcMapMu.Unlock()
-	return unsafe.Pointer(uintptr(unsafe.Pointer(nil)) + uintptr(id))
+	_funcMapMu.Unlock()
+	return id
 }
 
-func UnregisterFunc(fnId unsafe.Pointer) {
-	funcMapMu.Lock()
-	delete(funcMap, uint(uintptr(fnId)))
-	funcMapMu.Unlock()
+func UnregisterFunc(id uint) {
+	_funcMapMu.Lock()
+	delete(_funcMap, id)
+	_funcMapMu.Unlock()
 }
 
 func GetFunc(id uint) Closure {
-	funcMapMu.RLock()
-	c := funcMap[id]
-	funcMapMu.RUnlock()
+	_funcMapMu.RLock()
+	c := _funcMap[id]
+	_funcMapMu.RUnlock()
 	return c
 }
 
@@ -252,6 +252,10 @@ func Bool2Int(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func Uint2Ptr(n uint) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(unsafe.Pointer(nil)) + uintptr(n))
 }
 
 type Enum int

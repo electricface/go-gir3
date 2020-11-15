@@ -127,7 +127,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 
 		// 回调函数调用之后
 		s.GoBody.Pn("if %v.Scope == gi.ScopeAsync {", varClosure) // begin if 1
-		s.GoBody.Pn("    gi.UnregisterFunc(unsafe.Pointer(user_data))")
+		s.GoBody.Pn("    gi.UnregisterFunc(uint(uintptr(user_data)))")
 		s.GoBody.Pn("}") // end if 1
 
 		s.GoBody.Pn("}") // end if 0

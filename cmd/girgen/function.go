@@ -1157,7 +1157,7 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackA
 				}
 
 				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v := gi.RegisterFunc(%v, %v)", varCId, varArg, scope))
-				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varCId)
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgumentU(%v)", varCId)
 				// NOTE: 当 scope 为 async 时不能在 iv.Call 调用返回之后立即 unregister func，因为异步函数会立即返回，然后立即取消注册，应该延后到异步回调函数
 				// 运行之后再 unregister func。
 				if scopeType == gi.SCOPE_TYPE_CALL {

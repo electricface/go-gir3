@@ -139,6 +139,10 @@ func NewPointerArgument(v unsafe.Pointer) (arg Argument) {
 	return
 }
 
+func NewPointerArgumentU(v uint) (arg Argument) {
+	return NewPointerArgument(Uint2Ptr(v))
+}
+
 func (arg Argument) Bool() bool {
 	val := *(*C.gboolean)(unsafe.Pointer(&arg))
 	return val != 0
