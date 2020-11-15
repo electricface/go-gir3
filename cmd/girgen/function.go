@@ -87,17 +87,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	b := &SourceBlock{}
 	symbol := fi.Symbol()
 	fiName := fi.Name()
-	// 用于黑名单识别函数的名字
-	identifyName := fiName
 	container := fi.Container()
-	if container != nil {
-		// NOTE: 注意不要调用 container 的 Unref 方法，fi.Container() 没有转移所有权。
-		identifyName = container.Name() + "." + fiName
-	}
-	if strSliceContains(_cfg.Black, identifyName) {
-		b.Pn("\n// black function %s\n", identifyName)
-		return
-	}
+	// NOTE: 注意不要调用 container 的 Unref 方法，fi.Container() 没有转移所有权。
 
 	funcIdx := _funcNextIdx
 	_funcNextIdx++
@@ -405,6 +396,18 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 		commentLines = append(commentLines, fmt.Sprintf(
 			"[ %v ] trans: %v", varResult, fi.CallerOwns()), "")
+	}
+
+	// 用于黑名单识别函数的名字
+	identifyName := fnName
+	if container != nil {
+		identifyName = container.Name() + "." + fnName
+	}
+
+	if strSliceContains(_cfg.Black, identifyName) {
+		b.Pn("\n// black function %s\n", identifyName)
+		s.GoBody.addBlock(b)
+		return
 	}
 
 	// 目标函数为生成的 Go 函数

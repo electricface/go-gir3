@@ -5,22 +5,20 @@ package g
 #include <glib.h>
 #include <glib-object.h>
 #include <stdlib.h>
+
 extern void	goMarshal(GClosure *, GValue *, guint, GValue *, gpointer, GValue *);
 
-static GClosure *
-_g_closure_new() {
-GClosure	*closure;
-
-closure = g_closure_new_simple(sizeof(GClosure), NULL);
-g_closure_set_marshal(closure, (GClosureMarshal)(goMarshal));
-return closure;
+static GClosure * _g_closure_new() {
+	GClosure	*closure;
+	closure = g_closure_new_simple(sizeof(GClosure), NULL);
+	g_closure_set_marshal(closure, (GClosureMarshal)(goMarshal));
+	return closure;
 }
 
 extern void	removeClosure(gpointer, GClosure *);
 
-static void
-_g_closure_add_finalize_notifier(GClosure *closure) {
-g_closure_add_finalize_notifier(closure, NULL, removeClosure);
+static void _g_closure_add_finalize_notifier(GClosure *closure) {
+	g_closure_add_finalize_notifier(closure, NULL, removeClosure);
 }
 
 static gboolean _g_is_value(GValue *val) {
@@ -38,14 +36,41 @@ static GObjectClass * _g_object_get_class (GObject *object) {
 */
 import "C"
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"runtime/debug"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/linuxdeepin/go-gir/gi"
+)
+
+const (
+	TYPE_INVALID   gi.GType = C.G_TYPE_INVALID
+	TYPE_NONE      gi.GType = C.G_TYPE_NONE
+	TYPE_INTERFACE gi.GType = C.G_TYPE_INTERFACE
+	TYPE_CHAR      gi.GType = C.G_TYPE_CHAR
+	TYPE_UCHAR     gi.GType = C.G_TYPE_UCHAR
+	TYPE_BOOLEAN   gi.GType = C.G_TYPE_BOOLEAN
+	TYPE_INT       gi.GType = C.G_TYPE_INT   // int32
+	TYPE_UINT      gi.GType = C.G_TYPE_UINT  // uint32
+	TYPE_LONG      gi.GType = C.G_TYPE_LONG  // int64
+	TYPE_ULONG     gi.GType = C.G_TYPE_ULONG // uint64
+	TYPE_INT64     gi.GType = C.G_TYPE_INT64
+	TYPE_UINT64    gi.GType = C.G_TYPE_UINT64
+	TYPE_ENUM      gi.GType = C.G_TYPE_ENUM
+	TYPE_FLAGS     gi.GType = C.G_TYPE_FLAGS
+	TYPE_FLOAT     gi.GType = C.G_TYPE_FLOAT
+	TYPE_DOUBLE    gi.GType = C.G_TYPE_DOUBLE
+	TYPE_STRING    gi.GType = C.G_TYPE_STRING
+	TYPE_POINTER   gi.GType = C.G_TYPE_POINTER
+	TYPE_BOXED     gi.GType = C.G_TYPE_BOXED
+	TYPE_PARAM     gi.GType = C.G_TYPE_PARAM
+	TYPE_OBJECT    gi.GType = C.G_TYPE_OBJECT
+	TYPE_VARIANT   gi.GType = C.G_TYPE_VARIANT
 )
 
 type closureContext struct {
@@ -53,26 +78,26 @@ type closureContext struct {
 }
 
 var (
-	closures = struct {
+	_closures = struct {
 		sync.RWMutex
 		m map[unsafe.Pointer]closureContext
 	}{
 		m: make(map[unsafe.Pointer]closureContext),
 	}
 
-	signals = make(map[SignalHandle]Closure)
+	_signals = make(map[SignalHandle]Closure)
 )
 
-// removeClosure removes a closure from the internal closures map.  This is
+// removeClosure removes a closure from the internal _closures map.  This is
 // needed to prevent a leak where Go code can access the closure context
 // (along with rf and userdata) even after an object has been destroyed and
 // the GClosure is invalidated and will never run.
 //
 //export removeClosure
 func removeClosure(_ C.gpointer, closure *C.GClosure) {
-	closures.Lock()
-	delete(closures.m, unsafe.Pointer(closure))
-	closures.Unlock()
+	_closures.Lock()
+	delete(_closures.m, unsafe.Pointer(closure))
+	_closures.Unlock()
 }
 
 //export goMarshal
@@ -80,10 +105,13 @@ func goMarshal(closure *C.GClosure, retValue *C.GValue,
 	nParams C.guint, params *C.GValue,
 	invocationHint C.gpointer, marshalData *C.GValue) {
 
+	_ = invocationHint
+	_ = marshalData
+
 	// Get the context associated with this callback closure.
-	closures.RLock()
-	cc := closures.m[unsafe.Pointer(closure)]
-	closures.RUnlock()
+	_closures.RLock()
+	cc := _closures.m[unsafe.Pointer(closure)]
+	_closures.RUnlock()
 
 	var args []interface{}
 	nGLibParams := int(nParams)
@@ -144,16 +172,6 @@ func gValueSlice(values *C.GValue, nValues int) (slice []C.GValue) {
 	return
 }
 
-//type Type uint
-
-//type CanGetTypeAndGValueGetter interface {
-//	GetType() Type
-//	GetGValueGetter() GValueGetter
-//}
-
-//var cgt CanGetTypeAndGValueGetter
-//var cgtIfc = reflect.TypeOf(&cgt).Elem()
-
 // ClosureNew creates a new GClosure and adds its callback function
 // to the internally-maintained map. It's exported for visibility to other
 // gotk3 packages and shouldn't be used in application code.
@@ -186,67 +204,106 @@ func ClosureNew(f interface{}) Closure {
 
 	// Associate the GClosure with rf.  rf will be looked up in this
 	// map by the closure when the closure runs.
-	closures.Lock()
-	closures.m[unsafe.Pointer(c)] = cc
-	closures.Unlock()
+	_closures.Lock()
+	_closures.m[unsafe.Pointer(c)] = cc
+	_closures.Unlock()
 
 	return Closure{unsafe.Pointer(c)}
 }
-
-type SignalHandle uint
 
 func (v Closure) native() *C.GClosure {
 	return (*C.GClosure)(v.P)
 }
 
+// 用于信号处理的
+type SignalHandle uint
+
+type SourceFunc func() bool
+
+type SourceHandle uint
+
+// IdleAdd adds an idle source to the default main event loop
+// context.  After running once, the source func will be removed
+// from the main event loop, unless f returns a single bool true.
+//
+// This function will cause a panic when f eventually runs if the
+// types of args do not match those of f.
+func IdleAdd(fn SourceFunc) (SourceHandle, error) {
+
+	// Create an idle source func to be added to the main loop context.
+	idleSrc := C.g_idle_source_new()
+	if idleSrc == nil {
+		return 0, nilPtrErr
+	}
+	return sourceAttach(idleSrc, fn)
+}
+
+var nilPtrErr = errors.New("cgo returned unexpected nil pointer")
+
+// TimeoutAdd adds an timeout source to the default main event loop
+// context.  After running once, the source func will be removed
+// from the main event loop, unless f returns a single bool true.
+func TimeoutAdd(interval time.Duration, fn SourceFunc) (SourceHandle, error) {
+	// Create a interval source func to be added to the main loop context.
+	// interval is in milliseconds
+	intervalMs := interval.Milliseconds()
+	timeoutSrc := C.g_timeout_source_new(C.guint(intervalMs))
+	if timeoutSrc == nil {
+		return 0, nilPtrErr
+	}
+
+	return sourceAttach(timeoutSrc, fn)
+}
+
+func TimeoutAddSeconds(interval uint, fn SourceFunc) (SourceHandle, error) {
+	timeoutSrc := C.g_timeout_source_new_seconds(C.guint(interval))
+	if timeoutSrc == nil {
+		return 0, nilPtrErr
+	}
+	return sourceAttach(timeoutSrc, fn)
+}
+
+// sourceAttach attaches a source to the default main loop context.
+func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
+	if src == nil {
+		return 0, nilPtrErr
+	}
+
+	// Create a new GClosure from f that invalidates itself when
+	// f returns false.  The error is ignored here, as this will
+	// always be a function.
+	closure := ClosureNew(fn)
+
+	// Set closure to run as a callback when the idle source runs.
+	C.g_source_set_closure(src, closure.native())
+
+	// Attach the idle source func to the default main event loop
+	// context.
+	cid := C.g_source_attach(src, nil)
+	return SourceHandle(cid), nil
+}
+
+// TODO:
+//func SourceSetClosure(src glib.Source, closure Closure) {
+//	C.g_source_set_closure((*C.GSource)(src.Ptr), closure.native())
+//}
+
 func (v Object) connectClosure(after bool, detailedSignal string, f interface{}) SignalHandle {
 	cstr := C.CString(detailedSignal)
-	defer C.free(unsafe.Pointer(cstr))
 
 	closure := ClosureNew(f)
 
 	c := C.g_signal_connect_closure(C.gpointer(v.P),
 		(*C.gchar)(cstr), closure.native(), C.gboolean(gi.Bool2Int(after)))
+	C.free(unsafe.Pointer(cstr))
+
 	handle := SignalHandle(c)
-
 	// Map the signal handle to the closure.
-	signals[handle] = closure
-
+	_signals[handle] = closure
 	return handle
 }
 
-//func SourceSetClosure(src glib.Source, closure Closure) {
-//	C.g_source_set_closure((*C.GSource)(src.Ptr), closure.native())
-//}
-
-type SourceFunc func() bool
-
-//func IdleAdd(f SourceFunc) uint {
-//	src := IdleSourceNew()
-//	id := setupSourceFunc(src, f)
-//	src.Unref()
-//	return id
-//}
-
-//func TimeoutAdd(interval uint, f SourceFunc) uint {
-//	src := TimeoutSourceNew(uint32(interval))
-//	id := setupSourceFunc(src, f)
-//	src.Unref()
-//	return id
-//}
-
-//func TimeoutAddSeconds(interval uint, f SourceFunc) uint {
-//	src := TimeoutSourceNewSeconds(uint32(interval))
-//	id := setupSourceFunc(src, f)
-//	src.Unref()
-//	return id
-//}
-
-func setupSourceFunc(src Source, f SourceFunc) uint {
-	closure := ClosureNew(f)
-	SourceSetClosure(src, closure)
-	return uint(src.Attach(MainContextDefault()))
-}
+/* ---- List ---- */
 
 func (v List) p() *C.GList {
 	return (*C.GList)(v.P)
@@ -353,6 +410,9 @@ func (v List) InsertBefore(sibling List, data unsafe.Pointer) List {
 	list := C.g_list_insert_before(v.p(), sibling.p(), C.gpointer(data))
 	return wrapList(list)
 }
+
+
+/* ---- SList ---- */
 
 func (v SList) p() *C.GSList {
 	return (*C.GSList)(v.P)
@@ -506,30 +566,7 @@ func (v SList) Index(data unsafe.Pointer) int {
 	return int(C.g_slist_index(v.p(), C.gconstpointer(data)))
 }
 
-const (
-	TYPE_INVALID   gi.GType = C.G_TYPE_INVALID
-	TYPE_NONE      gi.GType = C.G_TYPE_NONE
-	TYPE_INTERFACE gi.GType = C.G_TYPE_INTERFACE
-	TYPE_CHAR      gi.GType = C.G_TYPE_CHAR
-	TYPE_UCHAR     gi.GType = C.G_TYPE_UCHAR
-	TYPE_BOOLEAN   gi.GType = C.G_TYPE_BOOLEAN
-	TYPE_INT       gi.GType = C.G_TYPE_INT   // int32
-	TYPE_UINT      gi.GType = C.G_TYPE_UINT  // uint32
-	TYPE_LONG      gi.GType = C.G_TYPE_LONG  // int64
-	TYPE_ULONG     gi.GType = C.G_TYPE_ULONG // uint64
-	TYPE_INT64     gi.GType = C.G_TYPE_INT64
-	TYPE_UINT64    gi.GType = C.G_TYPE_UINT64
-	TYPE_ENUM      gi.GType = C.G_TYPE_ENUM
-	TYPE_FLAGS     gi.GType = C.G_TYPE_FLAGS
-	TYPE_FLOAT     gi.GType = C.G_TYPE_FLOAT
-	TYPE_DOUBLE    gi.GType = C.G_TYPE_DOUBLE
-	TYPE_STRING    gi.GType = C.G_TYPE_STRING
-	TYPE_POINTER   gi.GType = C.G_TYPE_POINTER
-	TYPE_BOXED     gi.GType = C.G_TYPE_BOXED
-	TYPE_PARAM     gi.GType = C.G_TYPE_PARAM
-	TYPE_OBJECT    gi.GType = C.G_TYPE_OBJECT
-	TYPE_VARIANT   gi.GType = C.G_TYPE_VARIANT
-)
+/* ---- Value ---- */
 
 func (v Value) p() *C.GValue {
 	return (*C.GValue)(v.P)
@@ -560,3 +597,14 @@ func (v Object) GetClass() ObjectClass {
 func (v ObjectClass) p() *C.GObjectClass {
 	return (*C.GObjectClass)(v.P)
 }
+
+//type Type uint
+
+//type CanGetTypeAndGValueGetter interface {
+//	GetType() Type
+//	GetGValueGetter() GValueGetter
+//}
+
+//var cgt CanGetTypeAndGValueGetter
+//var cgtIfc = reflect.TypeOf(&cgt).Elem()
+

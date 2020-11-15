@@ -162,8 +162,8 @@ func main() {
 
 	genStateFile := filepath.Join(outDir, "genState.json")
 	if _optNamespace == "GObject" || _optNamespace == "Gio" {
-		var gs genState
-		err = loadGenState(genStateFile, &gs)
+		var state genState
+		err = loadGenState(genStateFile, &state)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -174,12 +174,12 @@ func main() {
 				prevNs = nsOrder[i-1]
 			}
 		}
-		if gs.PrevNamespace != prevNs {
+		if state.PrevNamespace != prevNs {
 			log.Fatalf("prev namespace is not %v", prevNs)
 		}
 
-		_funcNextIdx = gs.FuncNextId
-		_getTypeNextId = gs.GetTypeNextId
+		_funcNextIdx = state.FuncNextId
+		_getTypeNextId = state.GetTypeNextId
 	}
 
 	configFile := filepath.Join(outDir, "config.json")

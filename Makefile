@@ -25,7 +25,7 @@ gen_all: sync_gi gen_g gen_gtk gen_other
 
 
 glib-2.0:
-	./girgen -n GLib -v 2.0 -p g -f $(G_DIR)/glib_auto.go
+	./girgen -n GLib -v 2.0 -p g -f $(G_DIR)/glib_auto.go -c glib-config.json
 	# libgirepository1.0-dev gir1.2-glib-2.0
 	# dev 包放 .gir 文件，gir1.2 包放 typelib 文件
 	# .gir 文件一般放在 /usr/share/gir-1.0/
