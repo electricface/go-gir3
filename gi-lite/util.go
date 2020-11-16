@@ -22,6 +22,7 @@
 package gi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -269,65 +270,84 @@ type Ulong uint64
 var TypeInt = reflect.TypeOf(0)
 var TypeUint = reflect.TypeOf(uint(0))
 
-func Store(args []interface{}, destSlice ...interface{}) {
-	for i, arg := range args {
-		if i >= len(destSlice) {
-			break
-		}
-		dest := destSlice[i]
-		store(arg, dest)
+func Store(src []interface{}, dest ...interface{}) error {
+	if len(src) != len(dest) {
+		return errors.New("gi.Store: length mismatch")
 	}
+
+	for i := range src {
+		if err := storeInterfaces(src[i], dest[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func StoreStruct(args []interface{}, dest interface{}) {
-	rv := reflect.ValueOf(dest)
-	if rv.Kind() == reflect.Ptr {
-		elem := rv.Elem()
+func StoreStruct(src []interface{}, dest interface{}) error {
+	destRv := reflect.ValueOf(dest)
+	if destRv.Kind() == reflect.Ptr {
+		elem := destRv.Elem()
 		if elem.Kind() == reflect.Struct {
 			num := elem.NumField()
-			for i := 0; i < num; i++ {
-				if i >= len(args) {
-					break
+			if len(src) != num {
+				return errors.New("gi.StoreStruct: length mismatch")
+			}
+			for i := range src {
+				if err := store(reflect.ValueOf(src[i]), elem.Field(i)); err != nil {
+					return err
 				}
-				src := args[i]
-				f := elem.Field(i)
-				store(src, f.Addr().Interface())
 			}
+			return nil
 		}
 	}
+	return errors.New("gi.StoreStruct: dest is not ptr")
 }
 
-func store(src interface{}, dest interface{}) {
-	switch a := src.(type) {
-	case unsafe.Pointer:
-		left, ok := dest.(*unsafe.Pointer)
+func storeInterfaces(src, dest interface{}) error {
+	return store(reflect.ValueOf(src), reflect.ValueOf(dest))
+}
+
+func store(src, dest reflect.Value) error {
+	if dest.Kind() == reflect.Ptr {
+		return store(src, dest.Elem())
+	}
+	return storeBase(src, dest)
+}
+
+func storeBase(src, dest reflect.Value) error {
+	destType := dest.Type()
+
+	if src.Type().ConvertibleTo(destType) {
+		dest.Set(src.Convert(destType))
+		return nil
+	}
+
+	if src.Kind() == reflect.UnsafePointer {
+		ok := storeStructFieldP(dest, unsafe.Pointer(src.Pointer()))
 		if ok {
-			*left = a
-		} else {
-			storeStructFieldP(dest, a)
+			return nil
 		}
-	default:
-		srcRv := reflect.ValueOf(src)
-		if srcRv.Kind() == reflect.Struct {
-			p := srcRv.FieldByName("P")
-			if p.Kind() == reflect.UnsafePointer {
-				// src 是有 P unsafe.Pointer 在字段的结构体，比如 g.Object
-				storeStructFieldP(dest, unsafe.Pointer(p.Pointer()))
+	} else if src.Kind() == reflect.Struct {
+		p := src.FieldByName("P")
+		if p.Kind() == reflect.UnsafePointer {
+			// src 是有 P unsafe.Pointer 字段的结构体，比如 g.Object
+			ok := storeStructFieldP(dest, unsafe.Pointer(p.Pointer()))
+			if ok {
+				return nil
 			}
 		}
-		// TODO: 支持更多的类型
 	}
+
+	return fmt.Errorf("gi.Store: type mismatch: cannot covert %s to %s", src.Type(), dest.Type())
 }
 
-func storeStructFieldP(dest interface{}, ptr unsafe.Pointer) {
-	rv := reflect.ValueOf(dest)
-	if rv.Kind() == reflect.Ptr {
-		elem := rv.Elem()
-		if elem.Kind() == reflect.Struct {
-			p := elem.FieldByName("P")
-			if p.IsValid() && p.Kind() == reflect.UnsafePointer {
-				p.SetPointer(ptr)
-			}
+func storeStructFieldP(dest reflect.Value, ptr unsafe.Pointer) bool {
+	if dest.Kind() == reflect.Struct {
+		p := dest.FieldByName("P")
+		if p.Kind() == reflect.UnsafePointer {
+			p.SetPointer(ptr)
+			return true
 		}
 	}
+	return false
 }
