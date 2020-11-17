@@ -12,19 +12,30 @@ import (
  * GValue
  */
 
-func NewValue() Value {
+var errNoMem = errors.New("cannot alloc memory")
+
+func NewValue() (Value, error) {
 	p := gi.Malloc0(SizeOfStructValue)
-	return Value{P: p}
+	if p == nil {
+		return Value{}, errNoMem
+	}
+	return Value{P: p}, nil
 }
 
-func NewValueT(gType gi.GType) Value {
-	v := NewValue()
+func NewValueT(gType gi.GType) (Value, error) {
+	v, err := NewValue()
+	if err != nil {
+		return Value{}, err
+	}
 	v.Init(gType)
-	return v
+	return v, nil
 }
 
 func NewValueWith(iVal interface{}) (Value, error) {
-	v := NewValue()
+	v, err := NewValue()
+	if err != nil {
+		return Value{}, err
+	}
 	type0, err := getValueType(iVal)
 	if err != nil {
 		return Value{}, err
@@ -72,6 +83,23 @@ func (v Value) Get() (interface{}, error) {
 		return v.get(fundamentalType)
 	}
 	return nil, err
+}
+
+func (v Value) Store(dest interface{}) error {
+	src, err := v.Get()
+	if err != nil {
+		return err
+	}
+
+	// 有限制，如果 src 是 g.Object ，则要求 dest 必须也是 GObject，要实现 IObject 接口。
+	if _, ok := src.(Object); ok {
+		// is obj
+		if _, isIObj := dest.(IObject); !isIObj {
+			return errors.New("dest is not object")
+		}
+	}
+
+	return gi.StoreInterfaces(src, dest)
 }
 
 var errTypeUnknown = errors.New("unknown type")

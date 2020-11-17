@@ -291,6 +291,41 @@ func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
 //	C.g_source_set_closure((*C.GSource)(src.Ptr), closure.native())
 //}
 
+/* ---- Value ---- */
+
+func (v Value) native() *C.GValue {
+	return (*C.GValue)(v.P)
+}
+
+// Type 获取 Value 的类型 id。
+// 和 GetGType 方法不一样，GetGType 要求 Value 保存的值是 GType 类型，并且获取保存的值。
+func (v Value) Type() gi.GType {
+	ret := C._g_value_type(v.native())
+	return gi.GType(ret)
+}
+
+// IsValid 检查 Value 是否合法和已经初始化了。
+func (v Value) IsValid() bool {
+	ret := C._g_is_value(v.native())
+	return gi.Int2Bool(int(ret))
+}
+
+func (v Value) Init(gType gi.GType) Value {
+	ret := C.g_value_init(v.native(), C.GType(gType))
+	return Value{P: unsafe.Pointer(ret)}
+}
+
+func (v Value) Reset() Value {
+	ret := C.g_value_reset(v.native())
+	return Value{P: unsafe.Pointer(ret)}
+}
+
+func (v Value) Unset() {
+	C.g_value_unset(v.native())
+}
+
+/* ---- Object ---- */
+
 func (v Object) connectClosure(after bool, detailedSignal string, f interface{}) SignalHandle {
 	cstr := C.CString(detailedSignal)
 
@@ -304,6 +339,83 @@ func (v Object) connectClosure(after bool, detailedSignal string, f interface{})
 	// Map the signal handle to the closure.
 	_signals[handle] = closure
 	return handle
+}
+
+func (v Object) native() *C.GObject {
+	return (*C.GObject)(v.P)
+}
+
+func (v Object) GetClass() ObjectClass {
+	ret := C._g_object_get_class(v.native())
+	return ObjectClass{P: unsafe.Pointer(ret)}
+}
+
+// GetPropertyType returns the Type of a property of the underlying GObject.
+// If the property is missing it will return TYPE_INVALID and an error.
+func (v Object) GetPropertyType(name string) (gi.GType, error) {
+	cName := C.CString(name)
+	paramSpec := C.g_object_class_find_property(C._g_object_get_class(v.native()), (*C.gchar)(cName))
+	C.free(unsafe.Pointer(cName))
+
+	if paramSpec == nil {
+		return TYPE_INVALID, errors.New("couldn't find Property")
+	}
+	return gi.GType(paramSpec.value_type), nil
+}
+
+// GetProperty is a wrapper around g_object_get_property().
+// 需要释放返回的 Value
+func (v Object) Get(name string) (Value, error) {
+	t, err := v.GetPropertyType(name)
+	if err != nil {
+		return Value{}, err
+	}
+
+	value, err := NewValueT(t)
+	if err != nil {
+		return Value{}, err
+	}
+	v.get(name, value)
+	return value, nil
+}
+
+func (v Object) get(name string, value Value) {
+	cName := C.CString(name)
+	C.g_object_get_property(v.native(), (*C.gchar)(cName), value.native())
+	C.free(unsafe.Pointer(cName))
+	return
+}
+
+func (v Object) GetProperties(names []string, dest ...interface{}) error {
+	if len(names) != len(dest) {
+		return errors.New("Object.GetProperties: length mismatch")
+	}
+	value, err := NewValue()
+	if err != nil {
+		return err
+	}
+	defer value.Free()
+
+	for i, name := range names {
+		t, err := v.GetPropertyType(name)
+		if err != nil {
+			return err
+		}
+		value.Unset()
+		value.Init(t)
+		v.get(name, value)
+		err = value.Store(dest[i])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+/* ---- ObjectClass ---- */
+
+func (v ObjectClass) p() *C.GObjectClass {
+	return (*C.GObjectClass)(v.P)
 }
 
 /* ---- List ---- */
@@ -413,7 +525,6 @@ func (v List) InsertBefore(sibling List, data unsafe.Pointer) List {
 	list := C.g_list_insert_before(v.p(), sibling.p(), C.gpointer(data))
 	return wrapList(list)
 }
-
 
 /* ---- SList ---- */
 
@@ -569,38 +680,6 @@ func (v SList) Index(data unsafe.Pointer) int {
 	return int(C.g_slist_index(v.p(), C.gconstpointer(data)))
 }
 
-/* ---- Value ---- */
-
-func (v Value) p() *C.GValue {
-	return (*C.GValue)(v.P)
-}
-
-// Type 获取 Value 的类型 id。
-// 和 GetGType 方法不一样，GetGType 要求 Value 保存的值是 GType 类型，并且获取保存的值。
-func (v Value) Type() gi.GType {
-	ret := C._g_value_type(v.p())
-	return gi.GType(ret)
-}
-
-// IsValid 检查 Value 是否合法和已经初始化了。
-func (v Value) IsValid() bool {
-	ret := C._g_is_value(v.p())
-	return gi.Int2Bool(int(ret))
-}
-
-func (v Object) p() *C.GObject {
-	return (*C.GObject)(v.P)
-}
-
-func (v Object) GetClass() ObjectClass {
-	ret := C._g_object_get_class(v.p())
-	return ObjectClass{P: unsafe.Pointer(ret)}
-}
-
-func (v ObjectClass) p() *C.GObjectClass {
-	return (*C.GObjectClass)(v.P)
-}
-
 //type Type uint
 
 //type CanGetTypeAndGValueGetter interface {
@@ -610,4 +689,3 @@ func (v ObjectClass) p() *C.GObjectClass {
 
 //var cgt CanGetTypeAndGValueGetter
 //var cgtIfc = reflect.TypeOf(&cgt).Elem()
-

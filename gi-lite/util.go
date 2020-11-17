@@ -307,6 +307,10 @@ func storeInterfaces(src, dest interface{}) error {
 	return store(reflect.ValueOf(src), reflect.ValueOf(dest))
 }
 
+func StoreInterfaces(src, dest interface{}) error {
+	return storeInterfaces(src, dest)
+}
+
 func store(src, dest reflect.Value) error {
 	if dest.Kind() == reflect.Ptr {
 		return store(src, dest.Elem())
