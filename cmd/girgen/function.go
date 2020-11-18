@@ -62,7 +62,7 @@ func getFunctionNameFinal(fi *gi.FunctionInfo) string {
 
 { // begin func
 
-beforeArgLines
+beforeNewArgLines
 
 newArgLines
 
@@ -81,71 +81,54 @@ return
 */
 
 type pFuncContext struct {
-	// 函数内变量名称分配器
-	varReg VarReg
+	fi        *gi.FunctionInfo
+	container *gi.BaseInfo
 	// 目标函数形参列表，元素是 "名字 类型"
 	params []string
 	// 目标函数返回参数列表，元素是 "名字 类型"
 	retParams []string
-
 	// 准备传递给 invoker.Call 中的参数的代码之前的语句, 在 newArgLines 之前的语句。
-	beforeArgLines []string
+	beforeNewArgLines []string
 	// 准备传递给 invoker.Call 中的参数的语句
 	newArgLines []string
 	// 传递给 invoker.Call 的参数列表
 	argNames []string
-
 	// 在 invoker.Call 执行后需要执行的语句
 	afterCallLines []string
-
 	// 设置生成 Go 函数的返回值变量的语句
 	// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
 	// 或 param1.P = outArgs[1].Pointer()
 	setParamLines []string
-
 	// 在 return 返回之前的语句
 	beforeRetLines []string
-
 	// 函数开头的注释
 	commentLines []string
-
 	// 生成 go函数的名称
 	fnName string
-
 	// 函数接收者部分
 	receiver string
-
-	funcIdx int
-
 	// 是否抛出错误，如果为 true，则 C 函数中最后一个参数是 **GError err
 	isThrows bool
-
-	// 是否**无**返回值
+	// 是否 C 函数 **无** 返回值
 	isRetVoid bool
-
-	idxLv1 int
-	idxLv2 int
-
+	funcIdx   int
+	idxLv1    int
+	idxLv2    int
 	// direction 为 inout 或 out 的参数个数
 	numOutArgs int
-
-	varOutArgs string
-
-	container *gi.BaseInfo
-
+	// 函数内变量名称分配器
+	varReg VarReg
 	// 必要变量名
-	varRet    string
-	varResult string
-	varErr    string
-
-	fi *gi.FunctionInfo
+	varRet     string
+	varResult  string
+	varErr     string
+	varOutArgs string
 }
 
 func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	if fi.IsDeprecated() {
 		markDeprecated(s)
 	}
-	b := &SourceBlock{}
 	symbol := fi.Symbol()
 	// NOTE: 注意不要调用 container 的 Unref 方法，fi.Container() 没有转移所有权。
 
@@ -330,7 +313,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				}
 
 				type0 = parseResult.type0
-				ctx.beforeArgLines = append(ctx.beforeArgLines, parseResult.beforeArgLines...)
+				ctx.beforeNewArgLines = append(ctx.beforeNewArgLines, parseResult.beforeArgLines...)
 
 				varArg := ctx.varReg.alloc("arg_" + paramName)
 				ctx.argNames = append(ctx.argNames, varArg)
@@ -427,6 +410,15 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 	}
 
+	b := &SourceBlock{}
+	ctx.print(b)
+	if b.containsTodo() { // 检查生成的代码里是否含有 TO-DO，如果有表示没处理好这个函数。
+		_numTodoFunc++
+	}
+	s.GoBody.addBlock(b)
+}
+
+func (ctx *pFuncContext) print(b *SourceBlock) {
 	// 用于黑名单识别函数的名字
 	identifyName := ctx.fnName
 	if ctx.container != nil {
@@ -435,18 +427,8 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	if strSliceContains(_cfg.Black, identifyName) {
 		b.Pn("\n// black function %s\n", identifyName)
-		s.GoBody.addBlock(b)
 		return
 	}
-
-	printFunc(b, &ctx)
-	if b.containsTodo() { // 检查生成的代码里是否含有 TO-DO，如果有表示没处理好这个函数。
-		_numTodoFunc++
-	}
-	s.GoBody.addBlock(b)
-}
-
-func printFunc(b *SourceBlock, ctx *pFuncContext) {
 
 	// 目标函数为生成的 Go 函数
 	// 输出目标函数前面的注释文档
@@ -454,17 +436,80 @@ func printFunc(b *SourceBlock, ctx *pFuncContext) {
 		b.Pn("// %v", line)
 	}
 
+	// 输出目标函数头部
 	paramsJoined := strings.Join(ctx.params, ", ")
-
 	retParamsJoined := strings.Join(ctx.retParams, ", ")
 	if len(ctx.retParams) > 0 {
 		retParamsJoined = "(" + retParamsJoined + ")"
 	}
-	// 输出目标函数头部
 	b.Pn("func %s %s(%s) %s {", ctx.receiver, ctx.fnName, paramsJoined, retParamsJoined)
 
+	ctx.printBody(b)
+	b.Pn("}") // end func
+}
+
+// 输出目标函数的实现 body
+func (ctx *pFuncContext) printBody(b *SourceBlock) {
 	varInvoker := ctx.varReg.alloc("iv")
 
+	ctx.printInvokerGet(b, varInvoker)
+
+	if ctx.numOutArgs > 0 {
+		b.Pn("var %s [%d]gi.Argument", ctx.varOutArgs, ctx.numOutArgs)
+	}
+
+	for _, line := range ctx.beforeNewArgLines {
+		b.Pn(line)
+	}
+
+	for _, line := range ctx.newArgLines {
+		b.Pn(line)
+	}
+
+	ctx.printInvokerCall(b, varInvoker)
+
+	for _, line := range ctx.afterCallLines {
+		b.Pn(line)
+	}
+
+	for _, line := range ctx.setParamLines {
+		b.Pn(line)
+	}
+
+	for _, line := range ctx.beforeRetLines {
+		b.Pn(line)
+	}
+
+	if len(ctx.retParams) > 0 {
+		b.Pn("return")
+	}
+}
+
+// 输出对 invoker.Call 的调用
+func (ctx *pFuncContext) printInvokerCall(b *SourceBlock, varInvoker string) {
+	callArgArgs := "nil" // 用于 iv.Call 的第一个参数，由它传入 C 函数的所有参数
+	if len(ctx.argNames) > 0 {
+		// 比如输出 args := []gi.Argument{arg0,arg1}
+		varArgs := ctx.varReg.alloc("args")
+		b.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(ctx.argNames, ", "))
+		callArgArgs = varArgs
+	}
+
+	callArgRet := "nil" // 用于 iv.Call 的第二个参数，由它传入 C 函数的返回值
+	if !ctx.isRetVoid {
+		// 有返回值
+		callArgRet = "&" + ctx.varRet
+		b.Pn("var %s gi.Argument", ctx.varRet)
+	}
+	callArgOutArgs := "nil" // 用于 iv.Call 的第三个参数
+	if ctx.numOutArgs > 0 {
+		callArgOutArgs = fmt.Sprintf("&%s[0]", ctx.varOutArgs)
+	}
+	b.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
+}
+
+// 输出对 invoker.Get 的调用
+func (ctx *pFuncContext) printInvokerGet(b *SourceBlock, varInvoker string) {
 	useGet1 := false
 	if _optNamespace == "GObject" || _optNamespace == "Gio" {
 		useGet1 = true
@@ -546,56 +591,6 @@ func printFunc(b *SourceBlock, ctx *pFuncContext) {
 
 		b.Pn("}") // end if err != nil
 	}
-
-	if ctx.numOutArgs > 0 {
-		b.Pn("var %s [%d]gi.Argument", ctx.varOutArgs, ctx.numOutArgs)
-	}
-
-	for _, line := range ctx.beforeArgLines {
-		b.Pn(line)
-	}
-
-	for _, line := range ctx.newArgLines {
-		b.Pn(line)
-	}
-
-	callArgArgs := "nil" // 用于 iv.Call 的第一个参数，由它传入 C 函数的所有参数
-	if len(ctx.argNames) > 0 {
-		// 比如输出 args := []gi.Argument{arg0,arg1}
-		varArgs := ctx.varReg.alloc("args")
-		b.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(ctx.argNames, ", "))
-		callArgArgs = varArgs
-	}
-
-	callArgRet := "nil" // 用于 iv.Call 的第二个参数，由它传入 C 函数的返回值
-	if !ctx.isRetVoid {
-		// 有返回值
-		callArgRet = "&" + ctx.varRet
-		b.Pn("var %s gi.Argument", ctx.varRet)
-	}
-	callArgOutArgs := "nil" // 用于 iv.Call 的第三个参数
-	if ctx.numOutArgs > 0 {
-		callArgOutArgs = fmt.Sprintf("&%s[0]", ctx.varOutArgs)
-	}
-	b.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
-
-	for _, line := range ctx.afterCallLines {
-		b.Pn(line)
-	}
-
-	for _, line := range ctx.setParamLines {
-		b.Pn(line)
-	}
-
-	for _, line := range ctx.beforeRetLines {
-		b.Pn(line)
-	}
-
-	if len(ctx.retParams) > 0 {
-		b.Pn("return")
-	}
-
-	b.Pn("}") // end func
 }
 
 type parseRetTypeResult struct {
