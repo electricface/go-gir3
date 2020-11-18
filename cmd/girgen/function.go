@@ -80,70 +80,95 @@ return
 
 */
 
+type pFuncContext struct {
+	// 函数内变量名称分配器
+	varReg VarReg
+	// 目标函数形参列表，元素是 "名字 类型"
+	params []string
+	// 目标函数返回参数列表，元素是 "名字 类型"
+	retParams []string
+
+	// 准备传递给 invoker.Call 中的参数的代码之前的语句, 在 newArgLines 之前的语句。
+	beforeArgLines []string
+	// 准备传递给 invoker.Call 中的参数的语句
+	newArgLines []string
+	// 传递给 invoker.Call 的参数列表
+	argNames []string
+
+	// 在 invoker.Call 执行后需要执行的语句
+	afterCallLines []string
+
+	// 设置生成 Go 函数的返回值变量的语句
+	// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
+	// 或 param1.P = outArgs[1].Pointer()
+	setParamLines []string
+
+	// 在 return 返回之前的语句
+	beforeRetLines []string
+
+	// 函数开头的注释
+	commentLines []string
+
+	// 生成 go函数的名称
+	fnName string
+
+	// 函数接收者部分
+	receiver string
+
+	funcIdx int
+
+	// 是否抛出错误，如果为 true，则 C 函数中最后一个参数是 **GError err
+	isThrows bool
+
+	// 是否**无**返回值
+	isRetVoid bool
+
+	idxLv1 int
+	idxLv2 int
+
+	// direction 为 inout 或 out 的参数个数
+	numOutArgs int
+
+	varOutArgs string
+
+	container *gi.BaseInfo
+
+	// 必要变量名
+	varRet    string
+	varResult string
+	varErr    string
+
+	fi *gi.FunctionInfo
+}
+
 func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	if fi.IsDeprecated() {
 		markDeprecated(s)
 	}
 	b := &SourceBlock{}
 	symbol := fi.Symbol()
-	fiName := fi.Name()
-	container := fi.Container()
 	// NOTE: 注意不要调用 container 的 Unref 方法，fi.Container() 没有转移所有权。
 
-	funcIdx := _funcNextIdx
+	var ctx pFuncContext
+	ctx.fi = fi
+	ctx.idxLv1 = idxLv1
+	ctx.idxLv2 = idxLv2
+	ctx.commentLines = append(ctx.commentLines, symbol, "")
+	ctx.fnName = getFunctionNameFinal(fi)
+	ctx.funcIdx = _funcNextIdx
+	ctx.container = fi.Container()
+
 	_funcNextIdx++
 	_numFunc++
 
-	fnName := getFunctionNameFinal(fi)
-
-	var commentLines []string
-	commentLines = append(commentLines, symbol, "")
-
-	// 函数内变量名称分配器
-	var varReg VarReg
-	// 目标函数形参列表，元素是 "名字 类型"
-	var params []string
-	// 目标函数返回参数列表，元素是 "名字 类型"
-	var retParams []string
-
-	// 准备传递给 invoker.Call 中的参数的代码之前的语句, 在 newArgLines 之前的语句。
-	var beforeArgLines []string
-	// 准备传递给 invoker.Call 中的参数的语句
-	var newArgLines []string
-	// 传递给 invoker.Call 的参数列表
-	var argNames []string
-
-	// 在 invoker.Call 执行后需要执行的语句
-	var afterCallLines []string
-
-	// 设置生成 Go 函数的返回值变量的语句
-	// setParamLine 类似 param1 = outArgs[1].Int(), 或 param1 = rune(outArgs[1].Uint32())
-	// 或 param1.P = outArgs[1].Pointer()
-	var setParamLines []string
-
-	// 在 return 返回之前的语句
-	var beforeRetLines []string
-
-	// direction 为 inout 或 out 的参数个数
-	var numOutArgs int
-	var outArgIdx int
-
-	var varOutArgs string
-
-	// 函数接收者部分
-	var receiver string
-
-	// 是否抛出错误，如果为 true，则 C 函数中最后一个参数是 **GError err
-	var isThrows bool
-
 	fnFlags := fi.Flags()
-	varErr := varReg.alloc("err")
+	ctx.varErr = ctx.varReg.alloc("err")
 	if fnFlags&gi.FUNCTION_THROWS != 0 {
-		isThrows = true
+		ctx.isThrows = true
 	}
 
 	argIdxStart := 0
-	if container != nil {
+	if ctx.container != nil {
 		addReceiver := false
 		//b.Pn("// container is not nil, container is %s", container.Name())
 		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
@@ -162,7 +187,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				//b.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
 				if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
 					ii := arg0Type.Interface()
-					if ii.Name() == container.Name() {
+					if ii.Name() == ctx.container.Name() {
 						addReceiver = true
 						// 从 1 开始
 						argIdxStart = 1
@@ -172,38 +197,38 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 				if !addReceiver {
 					// 不能作为方法, 作为函数
-					fnName = container.Name() + fnName + "1"
+					ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
 					// TODO: 适当消除 1 后缀
 				}
 			} else {
 				//b.Pn("// num arg is 0")
 				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
-				fnName = container.Name() + fnName + "1"
+				ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
 			}
 		}
 
 		if addReceiver {
 			// 容器是否是 interface 类型的
 			isContainerIfc := false
-			if container.Type() == gi.INFO_TYPE_INTERFACE {
+			if ctx.container.Type() == gi.INFO_TYPE_INTERFACE {
 				isContainerIfc = true
 			}
 
-			receiverType := container.Name()
+			receiverType := ctx.container.Name()
 			if isContainerIfc {
 				receiverType = "*" + receiverType + "Ifc"
 			}
 
-			varV := varReg.alloc("v")
-			receiver = fmt.Sprintf("(%s %s)", varV, receiverType)
-			varArgV := varReg.alloc("arg_v")
+			varV := ctx.varReg.alloc("v")
+			ctx.receiver = fmt.Sprintf("(%s %s)", varV, receiverType)
+			varArgV := ctx.varReg.alloc("arg_v")
 			getPtrExpr := fmt.Sprintf("%s.P", varV)
 			if isContainerIfc {
 				getPtrExpr = fmt.Sprintf("*(*unsafe.Pointer)(unsafe.Pointer(%v))", varV)
 			}
-			newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%s)",
+			ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%s)",
 				varArgV, getPtrExpr))
-			argNames = append(argNames, varArgV)
+			ctx.argNames = append(ctx.argNames, varArgV)
 		}
 	}
 
@@ -216,14 +241,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	closureMap := make(map[int]int)
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
-		paramName := varReg.registerParam(i, argInfo.Name())
+		paramName := ctx.varReg.registerParam(i, argInfo.Name())
 
 		paramComment := fmt.Sprintf("[ %v ] trans: %v", paramName, argInfo.OwnershipTransfer())
 		dir := argInfo.Direction()
 		if dir == gi.DIRECTION_OUT || dir == gi.DIRECTION_INOUT {
 			paramComment += fmt.Sprintf(", dir: %v", dir)
 		}
-		commentLines = append(commentLines, paramComment, "")
+		ctx.commentLines = append(ctx.commentLines, paramComment, "")
 
 		closureIdx := argInfo.Closure() // 该参数的 user_data 的参数的索引
 		if closureIdx > 0 {
@@ -260,6 +285,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	}
 
 	// 开始处理每个参数
+	var outArgIdx int
 	for i := argIdxStart; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
 		argTypeInfo := argInfo.Type()
@@ -277,14 +303,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			}
 
 			if asRet {
-				numOutArgs++
-				if varOutArgs == "" {
-					varOutArgs = varReg.alloc("outArgs")
+				ctx.numOutArgs++
+				if ctx.varOutArgs == "" {
+					ctx.varOutArgs = ctx.varReg.alloc("outArgs")
 				}
 			}
 		}
 
-		paramName := varReg.getParam(i)
+		paramName := ctx.varReg.getParam(i)
 
 		if dir == gi.DIRECTION_IN || dir == gi.DIRECTION_INOUT {
 			// 作为目标函数的输入参数之一
@@ -294,52 +320,52 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 				var callbackArgInfo *gi.ArgInfo
 				if callbackIdx, ok := closureMap[i]; ok {
 					callbackArgInfo = fi.Arg(callbackIdx)
-					paramName = varReg.alloc("fn")
+					paramName = ctx.varReg.alloc("fn")
 				}
 
-				parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &varReg, callbackArgInfo)
+				parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &ctx.varReg, callbackArgInfo)
 
 				if callbackArgInfo != nil {
 					callbackArgInfo.Unref()
 				}
 
 				type0 = parseResult.type0
-				beforeArgLines = append(beforeArgLines, parseResult.beforeArgLines...)
+				ctx.beforeArgLines = append(ctx.beforeArgLines, parseResult.beforeArgLines...)
 
-				varArg := varReg.alloc("arg_" + paramName)
-				argNames = append(argNames, varArg)
-				newArgLines = append(newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArgExpr))
+				varArg := ctx.varReg.alloc("arg_" + paramName)
+				ctx.argNames = append(ctx.argNames, varArg)
+				ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArgExpr))
 
-				afterCallLines = append(afterCallLines, parseResult.afterCallLines...)
+				ctx.afterCallLines = append(ctx.afterCallLines, parseResult.afterCallLines...)
 			} else {
 				// TODO：处理 dir 为 inout 的
 			}
 
 			if type0 != "" {
 				// 如果需要隐藏参数，则把它的类型设置为空。
-				params = append(params, paramName+" "+type0)
+				ctx.params = append(ctx.params, paramName+" "+type0)
 			}
 
 		} else if dir == gi.DIRECTION_OUT {
 			// 处理方向为 out 的参数
-			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &varReg, isCallerAlloc,
+			parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &ctx.varReg, isCallerAlloc,
 				argInfo.OwnershipTransfer())
 			type0 := parseResult.type0
 			if _, ok := lenArgMap[i]; ok {
 				// 参数是数组的长度
-				afterCallLines = append(afterCallLines,
+				ctx.afterCallLines = append(ctx.afterCallLines,
 					fmt.Sprintf("var %v %v; _ = %v", paramName, type0, paramName))
 			} else if parseResult.isRet {
 				// 作为目标函数的返回值之一
-				retParams = append(retParams, paramName+" "+type0)
+				ctx.retParams = append(ctx.retParams, paramName+" "+type0)
 			}
 
-			varArg := varReg.alloc("arg_" + paramName)
-			argNames = append(argNames, varArg)
+			varArg := ctx.varReg.alloc("arg_" + paramName)
+			ctx.argNames = append(ctx.argNames, varArg)
 
 			if parseResult.isRet {
-				newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
-				getValExpr := fmt.Sprintf("%v[%v].%v", varOutArgs, outArgIdx, parseResult.expr)
+				ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, ctx.varOutArgs, outArgIdx))
+				getValExpr := fmt.Sprintf("%v[%v].%v", ctx.varOutArgs, outArgIdx, parseResult.expr)
 
 				setParamLine := fmt.Sprintf("%v%v = %v",
 					paramName, parseResult.field, getValExpr)
@@ -349,59 +375,62 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 						paramName, parseResult.field, type0, getValExpr)
 				}
 
-				setParamLines = append(setParamLines, setParamLine)
+				ctx.setParamLines = append(ctx.setParamLines, setParamLine)
 				outArgIdx++
 			} else {
 				// out 类型的参数，但依旧作为生成 Go 函数的参数，一定是指针类型
-				params = append(params, paramName+" "+parseResult.type0)
-				newArgLines = append(newArgLines,
+				ctx.params = append(ctx.params, paramName+" "+parseResult.type0)
+				ctx.newArgLines = append(ctx.newArgLines,
 					fmt.Sprintf("%v := gi.NewPointerArgument(%v)", varArg, parseResult.expr))
 			}
 
-			beforeRetLines = append(beforeRetLines, parseResult.beforeRetLines...)
+			ctx.beforeRetLines = append(ctx.beforeRetLines, parseResult.beforeRetLines...)
 		}
 
 		argTypeInfo.Unref()
 		argInfo.Unref()
 	}
 
-	if isThrows {
-		numOutArgs++
-		if varOutArgs == "" {
-			varOutArgs = varReg.alloc("outArgs")
+	if ctx.isThrows {
+		ctx.numOutArgs++
+		if ctx.varOutArgs == "" {
+			ctx.varOutArgs = ctx.varReg.alloc("outArgs")
 		}
-		varArg := varReg.alloc("arg_" + varErr)
-		argNames = append(argNames, varArg)
-		newArgLines = append(newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, varOutArgs, outArgIdx))
-		afterCallLines = append(afterCallLines, fmt.Sprintf("%v = gi.ToError(%v[%v].%v)", varErr, varOutArgs, outArgIdx, "Pointer()"))
-		retParams = append(retParams, varErr+" error")
+		varArg := ctx.varReg.alloc("arg_" + ctx.varErr)
+		ctx.argNames = append(ctx.argNames, varArg)
+		ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, ctx.varOutArgs, outArgIdx))
+		ctx.afterCallLines = append(ctx.afterCallLines, fmt.Sprintf("%v = gi.ToError(%v[%v].%v)", ctx.varErr, ctx.varOutArgs, outArgIdx, "Pointer()"))
+		ctx.retParams = append(ctx.retParams, ctx.varErr+" error")
 	}
 
-	var varRet string
-	var varResult string
 	var parseRetTypeResult *parseRetTypeResult
 
-	// 是否**无**返回值
-	var isRetVoid bool
 	if gi.TYPE_TAG_VOID == retTypeInfo.Tag() && !retTypeInfo.IsPointer() {
 		// 无返回值
-		isRetVoid = true
+		ctx.isRetVoid = true
 	} else {
 		// 有返回值
-		varRet = varReg.alloc("ret")
-		varResult = varReg.alloc("result")
-		parseRetTypeResult = parseRetType(varRet, retTypeInfo, &varReg, fi, fi.CallerOwns())
+		ctx.varRet = ctx.varReg.alloc("ret")
+		ctx.varResult = ctx.varReg.alloc("result")
+		parseRetTypeResult = parseRetType(ctx.varRet, retTypeInfo, &ctx.varReg, fi, fi.CallerOwns())
 		// 把返回值加在 retParams 列表最前面
-		retParams = append([]string{varResult + " " + parseRetTypeResult.type0}, retParams...)
+		ctx.retParams = append([]string{ctx.varResult + " " + parseRetTypeResult.type0}, ctx.retParams...)
 
-		commentLines = append(commentLines, fmt.Sprintf(
-			"[ %v ] trans: %v", varResult, fi.CallerOwns()), "")
+		ctx.commentLines = append(ctx.commentLines, fmt.Sprintf(
+			"[ %v ] trans: %v", ctx.varResult, fi.CallerOwns()), "")
+
+		// 设置返回值 result
+		ctx.beforeRetLines = append(ctx.beforeRetLines,
+			fmt.Sprintf("%s%s = %s", ctx.varResult, parseRetTypeResult.field, parseRetTypeResult.expr))
+		if parseRetTypeResult.zeroTerm {
+			ctx.beforeRetLines = append(ctx.beforeRetLines, fmt.Sprintf("%v.SetLenZT()", ctx.varResult))
+		}
 	}
 
 	// 用于黑名单识别函数的名字
-	identifyName := fnName
-	if container != nil {
-		identifyName = container.Name() + "." + fnName
+	identifyName := ctx.fnName
+	if ctx.container != nil {
+		identifyName = ctx.container.Name() + "." + ctx.fnName
 	}
 
 	if strSliceContains(_cfg.Black, identifyName) {
@@ -410,22 +439,31 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		return
 	}
 
+	printFunc(b, &ctx)
+	if b.containsTodo() { // 检查生成的代码里是否含有 TO-DO，如果有表示没处理好这个函数。
+		_numTodoFunc++
+	}
+	s.GoBody.addBlock(b)
+}
+
+func printFunc(b *SourceBlock, ctx *pFuncContext) {
+
 	// 目标函数为生成的 Go 函数
 	// 输出目标函数前面的注释文档
-	for _, line := range commentLines {
+	for _, line := range ctx.commentLines {
 		b.Pn("// %v", line)
 	}
 
-	paramsJoined := strings.Join(params, ", ")
+	paramsJoined := strings.Join(ctx.params, ", ")
 
-	retParamsJoined := strings.Join(retParams, ", ")
-	if len(retParams) > 0 {
+	retParamsJoined := strings.Join(ctx.retParams, ", ")
+	if len(ctx.retParams) > 0 {
 		retParamsJoined = "(" + retParamsJoined + ")"
 	}
 	// 输出目标函数头部
-	b.Pn("func %s %s(%s) %s {", receiver, fnName, paramsJoined, retParamsJoined)
+	b.Pn("func %s %s(%s) %s {", ctx.receiver, ctx.fnName, paramsJoined, retParamsJoined)
 
-	varInvoker := varReg.alloc("iv")
+	varInvoker := ctx.varReg.alloc("iv")
 
 	useGet1 := false
 	if _optNamespace == "GObject" || _optNamespace == "Gio" {
@@ -441,27 +479,28 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	// idxLv2: idxLv2
 	// infoType: gi.INFO_TYPE_FUNCTION | gi.INFO_TYPE_XX (XX is STRUCT,UNION,OBJECT,INTERFACE)
 	// flags: 0 or gi.FindMethodNoCallFind
-	getArgs := []interface{}{funcIdx} // id
+	getArgs := []interface{}{ctx.funcIdx} // id
 	if useGet1 {
 		// Get1 比 Get 多了一个 ns 参数。
 		getArgs = append(getArgs, strconv.Quote(_optNamespace)) // ns
 	}
 	// 处理 nameLv1, nameLv2 参数
-	if container == nil {
+	fiName := ctx.fi.Name()
+	if ctx.container == nil {
 		getArgs = append(getArgs, strconv.Quote(fiName)) // nameLv1
 		getArgs = append(getArgs, `""`)                  // nameLv2
 	} else {
-		getArgs = append(getArgs, strconv.Quote(container.Name())) // nameLv1
-		getArgs = append(getArgs, strconv.Quote(fiName))           // nameLv2
+		getArgs = append(getArgs, strconv.Quote(ctx.container.Name())) // nameLv1
+		getArgs = append(getArgs, strconv.Quote(fiName))               // nameLv2
 	}
 
-	getArgs = append(getArgs, idxLv1) // idxLv1
-	getArgs = append(getArgs, idxLv2) // idxLv2
+	getArgs = append(getArgs, ctx.idxLv1) // idxLv1
+	getArgs = append(getArgs, ctx.idxLv2) // idxLv2
 
 	// 处理 infoType 参数
 	infoType := "FUNCTION"
-	if container != nil {
-		switch container.Type() {
+	if ctx.container != nil {
+		switch ctx.container.Type() {
 		case gi.INFO_TYPE_STRUCT:
 			infoType = "STRUCT"
 		case gi.INFO_TYPE_UNION:
@@ -476,14 +515,14 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	// 处理 flags 参数
 	findMethodFlags := "0"
-	if _optNamespace == "GObject" && container != nil && container.Name() == "ObjectClass" {
+	if _optNamespace == "GObject" && ctx.container != nil && ctx.container.Name() == "ObjectClass" {
 		// 因为调用 StructInfo.FindMethod 方法去查找 GObject.ObjectClass 的方法会导致崩溃，所以加上这个 flag 来规避。
 		findMethodFlags = "gi.FindMethodNoCallFind"
 	}
 	getArgs = append(getArgs, findMethodFlags) // flags
 
 	// 输出 _I.Get 调用
-	b.P("%v, %v := _I.Get", varInvoker, varErr)
+	b.P("%v, %v := _I.Get", varInvoker, ctx.varErr)
 	if useGet1 {
 		b.P("1")
 	}
@@ -495,80 +534,68 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	{ // 处理 invoker 获取失败的情况
 
-		b.Pn("if %s != nil {", varErr)
+		b.Pn("if %s != nil {", ctx.varErr)
 
-		if isThrows {
+		if ctx.isThrows {
 			// 使用 err 变量返回错误
 		} else {
 			// 把 err 打印出来
-			b.Pn("log.Println(\"WARN:\", %s)", varErr)
+			b.Pn("log.Println(\"WARN:\", %s)", ctx.varErr)
 		}
 		b.Pn("return")
 
 		b.Pn("}") // end if err != nil
 	}
 
-	if numOutArgs > 0 {
-		b.Pn("var %s [%d]gi.Argument", varOutArgs, numOutArgs)
+	if ctx.numOutArgs > 0 {
+		b.Pn("var %s [%d]gi.Argument", ctx.varOutArgs, ctx.numOutArgs)
 	}
 
-	for _, line := range beforeArgLines {
+	for _, line := range ctx.beforeArgLines {
 		b.Pn(line)
 	}
 
-	for _, line := range newArgLines {
+	for _, line := range ctx.newArgLines {
 		b.Pn(line)
 	}
 
 	callArgArgs := "nil" // 用于 iv.Call 的第一个参数，由它传入 C 函数的所有参数
-	if len(argNames) > 0 {
+	if len(ctx.argNames) > 0 {
 		// 比如输出 args := []gi.Argument{arg0,arg1}
-		varArgs := varReg.alloc("args")
-		b.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(argNames, ", "))
+		varArgs := ctx.varReg.alloc("args")
+		b.Pn("%s := []gi.Argument{%s}", varArgs, strings.Join(ctx.argNames, ", "))
 		callArgArgs = varArgs
 	}
 
 	callArgRet := "nil" // 用于 iv.Call 的第二个参数，由它传入 C 函数的返回值
-	if !isRetVoid {
+	if !ctx.isRetVoid {
 		// 有返回值
-		callArgRet = "&" + varRet
-		b.Pn("var %s gi.Argument", varRet)
+		callArgRet = "&" + ctx.varRet
+		b.Pn("var %s gi.Argument", ctx.varRet)
 	}
 	callArgOutArgs := "nil" // 用于 iv.Call 的第三个参数
-	if numOutArgs > 0 {
-		callArgOutArgs = fmt.Sprintf("&%s[0]", varOutArgs)
+	if ctx.numOutArgs > 0 {
+		callArgOutArgs = fmt.Sprintf("&%s[0]", ctx.varOutArgs)
 	}
 	b.Pn("%s.Call(%s, %s, %s)", varInvoker, callArgArgs, callArgRet, callArgOutArgs)
 
-	for _, line := range afterCallLines {
+	for _, line := range ctx.afterCallLines {
 		b.Pn(line)
 	}
 
-	for _, line := range setParamLines {
+	for _, line := range ctx.setParamLines {
 		b.Pn(line)
 	}
 
-	if !isRetVoid && parseRetTypeResult != nil {
-		// 设置返回值 result
-		b.Pn("%s%s = %s", varResult, parseRetTypeResult.field, parseRetTypeResult.expr)
-		if parseRetTypeResult.zeroTerm {
-			b.Pn("%v.SetLenZT()", varResult)
-		}
-	}
-
-	for _, line := range beforeRetLines {
+	for _, line := range ctx.beforeRetLines {
 		b.Pn(line)
 	}
 
-	if len(retParams) > 0 {
+	if len(ctx.retParams) > 0 {
 		b.Pn("return")
 	}
 
-	b.Pn("}")             // end func
-	if b.containsTodo() { // 检查生成的代码里是否含有 TO-DO，如果有表示没处理好这个函数。
-		_numTodoFunc++
-	}
-	s.GoBody.addBlock(b)
+	b.Pn("}") // end func
 }
 
 type parseRetTypeResult struct {
