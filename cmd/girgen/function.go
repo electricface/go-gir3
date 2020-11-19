@@ -143,9 +143,6 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	fnFlags := fi.Flags()
 	ctx.varErr = ctx.varReg.alloc("err")
-	if fnFlags&gi.FUNCTION_THROWS != 0 {
-		ctx.isThrows = true
-	}
 
 	argIdxStart := 0
 	if ctx.container != nil {
@@ -214,14 +211,15 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	// lenArgMap 是数组长度参数的集合，键是长度参数的 index
 	lenArgMap := make(map[int]struct{})
-	numArgs := fi.NumArg()
 
 	// 键是 user_data 参数的索引，值是 callback 参数的索引，
 	// 提供一个从 user_data 参数找到 callback 参数的信息。
 	closureMap := make(map[int]int)
-	for i := argIdxStart; i < numArgs; i++ {
-		argInfo := fi.Arg(i)
-		paramName := ctx.varReg.registerParam(i, argInfo.Name())
+
+	numArgs := fi.NumArg()
+	for argIdx := argIdxStart; argIdx < numArgs; argIdx++ {
+		argInfo := fi.Arg(argIdx)
+		paramName := ctx.varReg.registerParam(argIdx, argInfo.Name())
 
 		paramComment := fmt.Sprintf("[ %v ] trans: %v", paramName, argInfo.OwnershipTransfer())
 		dir := argInfo.Direction()
@@ -235,21 +233,19 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			if argIdxStart == 1 {
 				closureIdx++
 			}
-			closureMap[closureIdx] = i
+			closureMap[closureIdx] = argIdx
 		}
 
-		argType := argInfo.Type()
-
-		typeTag := argType.Tag()
+		argTypeInfo := argInfo.Type()
+		typeTag := argTypeInfo.Tag()
 		if typeTag == gi.TYPE_TAG_ARRAY {
-			lenArgIdx := argType.ArrayLength() // 是该参数的长度参数的 index
+			lenArgIdx := argTypeInfo.ArrayLength() // 是该数组类型参数的长度参数的 index
 			if lenArgIdx >= 0 {
 				lenArgMap[lenArgIdx] = struct{}{}
-				// b.Pn("// arg %v %v lenArgIdx %v", i, argInfo.Name(), lenArgIdx)
 			}
 		}
 
-		argType.Unref()
+		argTypeInfo.Unref()
 		argInfo.Unref()
 	}
 
@@ -257,17 +253,17 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	defer retTypeInfo.Unref()
 	retTypeTag := retTypeInfo.Tag()
 	if retTypeTag == gi.TYPE_TAG_ARRAY {
+		// 返回值是数组类型
 		lenArgIdx := retTypeInfo.ArrayLength()
 		if lenArgIdx >= 0 {
 			lenArgMap[lenArgIdx] = struct{}{}
-			//b.Pn("// ret lenArgIdx %v", lenArgIdx)
 		}
 	}
 
 	// 开始处理每个参数
 	var outArgIdx int
-	for i := argIdxStart; i < numArgs; i++ {
-		argInfo := fi.Arg(i)
+	for argIdx := argIdxStart; argIdx < numArgs; argIdx++ {
+		argInfo := fi.Arg(argIdx)
 		argTypeInfo := argInfo.Type()
 		dir := argInfo.Direction()
 		isCallerAlloc := argInfo.IsCallerAllocates()
@@ -290,14 +286,15 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			}
 		}
 
-		paramName := ctx.varReg.getParam(i)
+		paramName := ctx.varReg.getParam(argIdx)
 
 		switch dir {
 		case gi.DIRECTION_IN:
 			// 处理方向为 in 的参数
 			var callbackArgInfo *gi.ArgInfo
-			if callbackIdx, ok := closureMap[i]; ok {
+			if callbackIdx, ok := closureMap[argIdx]; ok {
 				callbackArgInfo = fi.Arg(callbackIdx)
+				// TODO 应该把 paramName 改成更好的名字
 				paramName = ctx.varReg.alloc("fn")
 			}
 
@@ -309,7 +306,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		case gi.DIRECTION_OUT:
 			// 处理方向为 out 的参数
 			// isArgLen 表示本参数是某个输出数组的长度
-			_, isArgLen := lenArgMap[i]
+			_, isArgLen := lenArgMap[argIdx]
 			ctx.pFuncArgDirOut(paramName, argInfo, isArgLen, &outArgIdx)
 		}
 
@@ -317,7 +314,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		argInfo.Unref()
 	}
 
-	if ctx.isThrows {
+	if fnFlags&gi.FUNCTION_THROWS != 0 {
+		// C 函数会抛出错误
+		ctx.isThrows = true
 		ctx.numOutArgs++
 		if ctx.varOutArgs == "" {
 			ctx.varOutArgs = ctx.varReg.alloc("outArgs")
