@@ -304,11 +304,13 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 			ctx.pFuncArgDirIn(paramName, argTypeInfo, callbackArgInfo)
 		case gi.DIRECTION_INOUT:
 			// TODO：处理 dir 为 inout 的
-			type0 := "int/*TODO:TYPE*/"
+			type0 := "int/*TODO:DIR_INOUT*/"
 			ctx.params = append(ctx.params, paramName+" "+type0)
 		case gi.DIRECTION_OUT:
 			// 处理方向为 out 的参数
-			outArgIdx = ctx.pFuncArgDirOut(paramName, argTypeInfo, argInfo, lenArgMap, i, outArgIdx)
+			// isArgLen 表示本参数是某个输出数组的长度
+			_, isArgLen := lenArgMap[i]
+			ctx.pFuncArgDirOut(paramName, argInfo, isArgLen, &outArgIdx)
 		}
 
 		argTypeInfo.Unref()
@@ -337,16 +339,22 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	s.GoBody.addBlock(b)
 }
 
-func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argTypeInfo *gi.TypeInfo, argInfo *gi.ArgInfo, lenArgMap map[int]struct{}, i int, outArgIdx int) int {
-
+func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argInfo *gi.ArgInfo, isArgLen bool, outArgIdx *int) {
 	isCallerAlloc := argInfo.IsCallerAllocates()
+	argTypeInfo := argInfo.Type()
+	defer argTypeInfo.Unref()
 	parseResult := parseArgTypeDirOut(paramName, argTypeInfo, &ctx.varReg, isCallerAlloc,
 		argInfo.OwnershipTransfer())
 	type0 := parseResult.type0
-	if _, ok := lenArgMap[i]; ok {
-		// 参数是数组的长度
+	if isArgLen {
 		ctx.afterCallLines = append(ctx.afterCallLines,
 			fmt.Sprintf("var %v %v; _ = %v", paramName, type0, paramName))
+		// 加上 _ = % 是为了防止编译报错， 目前 pango 包还有问题
+		//# github.com/linuxdeepin/go-gir/pango-1.0
+		//pango-1.0/pango_auto.go:3633:6: num_scripts declared but not used
+		//pango-1.0/pango_auto.go:4180:6: n_attrs declared but not used
+		//pango-1.0/pango_auto.go:4204:6: n_attrs declared but not used
+		//pango-1.0/pango_auto.go:7226:6: n_families declared but not used
 	} else if parseResult.isRet {
 		// 作为目标函数的返回值之一
 		ctx.retParams = append(ctx.retParams, paramName+" "+type0)
@@ -356,8 +364,10 @@ func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argTypeInfo *gi.TypeIn
 	ctx.argNames = append(ctx.argNames, varArg)
 
 	if parseResult.isRet {
-		ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))", varArg, ctx.varOutArgs, outArgIdx))
-		getValExpr := fmt.Sprintf("%v[%v].%v", ctx.varOutArgs, outArgIdx, parseResult.expr)
+		ctx.newArgLines = append(ctx.newArgLines,
+			fmt.Sprintf("%v := gi.NewPointerArgument(unsafe.Pointer(&%v[%v]))",
+				varArg, ctx.varOutArgs, *outArgIdx))
+		getValExpr := fmt.Sprintf("%v[%v].%v", ctx.varOutArgs, *outArgIdx, parseResult.expr)
 
 		setParamLine := fmt.Sprintf("%v%v = %v",
 			paramName, parseResult.field, getValExpr)
@@ -368,7 +378,7 @@ func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argTypeInfo *gi.TypeIn
 		}
 
 		ctx.setParamLines = append(ctx.setParamLines, setParamLine)
-		outArgIdx++
+		*outArgIdx++
 	} else {
 		// out 类型的参数，但依旧作为生成 Go 函数的参数，一定是指针类型
 		ctx.params = append(ctx.params, paramName+" "+parseResult.type0)
@@ -377,7 +387,6 @@ func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argTypeInfo *gi.TypeIn
 	}
 
 	ctx.beforeRetLines = append(ctx.beforeRetLines, parseResult.beforeRetLines...)
-	return outArgIdx
 }
 
 func (ctx *pFuncContext) pFuncArgDirIn(paramName string, argTypeInfo *gi.TypeInfo, callbackArgInfo *gi.ArgInfo) {
