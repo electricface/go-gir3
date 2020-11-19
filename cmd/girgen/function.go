@@ -141,73 +141,9 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 	_funcNextIdx++
 	_numFunc++
 
-	fnFlags := fi.Flags()
 	ctx.varErr = ctx.varReg.alloc("err")
 
-	argIdxStart := 0
-	if ctx.container != nil {
-		addReceiver := false
-		//b.Pn("// container is not nil, container is %s", container.Name())
-		if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
-			// 表示 C 函数是构造器
-			//b.Pn("// is constructor")
-		} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
-			// 表示 C 函数是方法
-			//b.Pn("// is method")
-			addReceiver = true
-		} else {
-			// 可能 C 函数还是可以作为方法的，只不过没有处理好参数，如果第一个参数是指针类型，就大概率是方法。
-			if fi.NumArg() > 0 {
-				//b.Pn("// is method")
-				arg0 := fi.Arg(0)
-				arg0Type := arg0.Type()
-				//b.Pn("// arg0Type tag: %v, isPtr: %v", arg0Type.Tag(), arg0Type.IsPointer())
-				if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
-					ii := arg0Type.Interface()
-					if ii.Name() == ctx.container.Name() {
-						addReceiver = true
-						// 从 1 开始
-						argIdxStart = 1
-					}
-					ii.Unref()
-				}
-
-				if !addReceiver {
-					// 不能作为方法, 作为函数
-					ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
-					// TODO: 适当消除 1 后缀
-				}
-			} else {
-				//b.Pn("// num arg is 0")
-				// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
-				ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
-			}
-		}
-
-		if addReceiver {
-			// 容器是否是 interface 类型的
-			isContainerIfc := false
-			if ctx.container.Type() == gi.INFO_TYPE_INTERFACE {
-				isContainerIfc = true
-			}
-
-			receiverType := ctx.container.Name()
-			if isContainerIfc {
-				receiverType = "*" + receiverType + "Ifc"
-			}
-
-			varV := ctx.varReg.alloc("v")
-			ctx.receiver = fmt.Sprintf("(%s %s)", varV, receiverType)
-			varArgV := ctx.varReg.alloc("arg_v")
-			getPtrExpr := fmt.Sprintf("%s.P", varV)
-			if isContainerIfc {
-				getPtrExpr = fmt.Sprintf("*(*unsafe.Pointer)(unsafe.Pointer(%v))", varV)
-			}
-			ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%s)",
-				varArgV, getPtrExpr))
-			ctx.argNames = append(ctx.argNames, varArgV)
-		}
-	}
+	argIdxStart := ctx.pFuncReceiver()
 
 	// lenArgMap 是数组长度参数的集合，键是长度参数的 index
 	lenArgMap := make(map[int]struct{})
@@ -314,7 +250,7 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		argInfo.Unref()
 	}
 
-	if fnFlags&gi.FUNCTION_THROWS != 0 {
+	if fi.Flags()&gi.FUNCTION_THROWS != 0 {
 		// C 函数会抛出错误
 		ctx.isThrows = true
 		ctx.numOutArgs++
@@ -336,6 +272,70 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		_numTodoFunc++
 	}
 	s.GoBody.addBlock(b)
+}
+
+func (ctx *pFuncContext) pFuncReceiver() (argIdxStart int) {
+	if ctx.container == nil {
+		return
+	}
+	hasReceiver := false
+	fi := ctx.fi
+	fnFlags := fi.Flags()
+	if fnFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
+		// 表示 C 函数是构造器
+	} else if fnFlags&gi.FUNCTION_IS_METHOD != 0 {
+		// 表示 C 函数是方法
+		hasReceiver = true
+	} else {
+		// 可能 C 函数还是可以作为方法的，只不过没有处理好参数，如果第一个参数是指针类型，就大概率是方法。
+		if fi.NumArg() > 0 {
+			arg0 := fi.Arg(0)
+			arg0Type := arg0.Type()
+			if arg0Type.IsPointer() && arg0Type.Tag() == gi.TYPE_TAG_INTERFACE {
+				ii := arg0Type.Interface()
+				if ii.Name() == ctx.container.Name() {
+					hasReceiver = true
+					// 从 1 开始
+					argIdxStart = 1
+				}
+				ii.Unref()
+			}
+
+			if !hasReceiver {
+				// 不能作为方法, 作为函数
+				ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
+				// TODO: 适当消除 1 后缀
+			}
+		} else {
+			// 比如 io_channel_error_quark 方法，被重命名为IOChannel.error_quark，这算是 IOChannel 的 static 方法，
+			ctx.fnName = ctx.container.Name() + ctx.fnName + "1"
+		}
+	}
+
+	if hasReceiver {
+		// 容器是否是 interface 类型的
+		isContainerIfc := false
+		if ctx.container.Type() == gi.INFO_TYPE_INTERFACE {
+			isContainerIfc = true
+		}
+
+		receiverType := ctx.container.Name()
+		if isContainerIfc {
+			receiverType = "*" + receiverType + "Ifc"
+		}
+
+		varV := ctx.varReg.alloc("v")
+		ctx.receiver = fmt.Sprintf("(%s %s)", varV, receiverType)
+		varArgV := ctx.varReg.alloc("arg_v")
+		getPtrExpr := fmt.Sprintf("%s.P", varV)
+		if isContainerIfc {
+			getPtrExpr = fmt.Sprintf("*(*unsafe.Pointer)(unsafe.Pointer(%v))", varV)
+		}
+		ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := gi.NewPointerArgument(%s)",
+			varArgV, getPtrExpr))
+		ctx.argNames = append(ctx.argNames, varArgV)
+	}
+	return
 }
 
 func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argInfo *gi.ArgInfo, isArgLen bool, outArgIdx *int) {
