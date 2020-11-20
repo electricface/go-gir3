@@ -1,3 +1,4 @@
 {
-    "Black": ["Value.SetStringTakeOwnership", "Value.SetStaticString", "Value.Init", "Value.Reset", "Value.Unset"]
+    "Black": ["Value.SetStringTakeOwnership", "Value.SetStaticString", "Value.Init",
+        "Value.Reset", "Value.Unset", "SignalSetVaMarshaller"]
 }

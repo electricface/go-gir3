@@ -1238,6 +1238,9 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackA
 			}
 
 		} else {
+			debugMsg = fmt.Sprintf("isPtr: %v, tag: %v, biType: %v", isPtr, tag, biType)
+			type0 = fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
+
 			if biType == gi.INFO_TYPE_FLAGS {
 				type0 = getFlagsTypeName(getTypeName(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
@@ -1248,6 +1251,9 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackA
 				type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGetPointer_my%v())",
 					getPkgPrefix(bi.Namespace()), bi.Name())
+			} else if biType == gi.INFO_TYPE_UNRESOLVED {
+				// 如果发现此种未解析的类型，应该使用黑名单屏蔽。
+				type0 = "int /* TYPE_UNRESOLVED */"
 			}
 		}
 		bi.Unref()
