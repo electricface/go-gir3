@@ -23,7 +23,7 @@ package gi
 
 import "unsafe"
 
-const arrLenMax = 1 << 32
+const arrLenMax = 1 << 31
 
 type BoolArray struct {
 	P   unsafe.Pointer
@@ -138,7 +138,6 @@ func NewCStrArrayZTWithStrings(values ...string) CStrArray {
 }
 
 func (arr *CStrArray) SetLenZT() {
-	//noinspection GoInvalidIndexOrSliceExpression
 	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arrLenMax:arrLenMax]
 	for i, value := range slice {
 		if value == nil {
@@ -174,6 +173,63 @@ func (arr CStrArray) Copy() []string {
 	for _, value := range slice {
 		result = append(result, GoString(value))
 	}
+	return result
+}
+
+// strArr 的 array
+type CStrvArray struct {
+	P   unsafe.Pointer
+	Len int
+}
+
+func (arr *CStrvArray) Free() {
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr *CStrvArray) FreeAll() {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	for i := 0; i < arr.Len; i++ {
+		strArr := CStrArray{P: slice[i]}
+		strArr.SetLenZT()
+		strArr.FreeAll()
+	}
+	Free(arr.P)
+	arr.P = nil
+}
+
+func (arr *CStrvArray) SetLenZT() {
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == nil {
+			// 0 1 2
+			// p p nil
+			// 比如长度为3 的数组，最后一个是零值，实际是2个元素，在 value == nil 时，i 是 2, 所以 arr.Len = i
+			arr.Len = i
+			break
+		}
+	}
+}
+
+func (arr *CStrvArray) Copy() (result [][]string) {
+	if arr.Len < 0 {
+		panic("arr.len < 0")
+	}
+	if arr.Len == 0 {
+		return nil
+	}
+
+	slice := (*(*[arrLenMax]unsafe.Pointer)(arr.P))[:arr.Len:arr.Len]
+	for _, value := range slice {
+		strArr := CStrArray{P: value}
+		strArr.SetLenZT()
+		strSlice := strArr.Copy()
+		result = append(result, strSlice)
+	}
+
 	return result
 }
 
