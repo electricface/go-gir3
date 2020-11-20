@@ -869,11 +869,12 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 		needTypeCast = true
 
 	case gi.TYPE_TAG_INTERFACE:
-		isPtr := ti.IsPointer()
 		bi := ti.Interface()
+		defer bi.Unref()
 		biType := bi.Type()
+		isPtr := ti.IsPointer()
 
-		type0 = getDebugType("tag: ifc, biType: %v", biType)
+		type0 = getDebugType("tag: ifc, biType: %v, callerAlloc: %v, isPtr: %v", biType, isCallerAlloc, isPtr)
 		if isPtr && !isCallerAlloc {
 			if biType == gi.INFO_TYPE_OBJECT || biType == gi.INFO_TYPE_INTERFACE ||
 				biType == gi.INFO_TYPE_STRUCT {
@@ -901,10 +902,13 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 					isRet = false
 					type0 = getTypeName(bi)
 					expr = paramName + ".P"
+				} else {
+					type0 = getTypeName(bi)
+					field = ".P"
+					expr = "Pointer()"
 				}
 			}
 		}
-		bi.Unref()
 
 	case gi.TYPE_TAG_ERROR:
 		type0 = getGLibType("Error")
