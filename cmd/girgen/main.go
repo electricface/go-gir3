@@ -517,6 +517,12 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 var _getTypeNextId int
 
 func pGetTypeFunc(s *SourceFile, name string) {
+	if strSliceContains(_cfg.NoGetType, name) {
+		s.GoBody.Pn("// noGetType %s\n", name)
+		_getTypeNextId++
+		return
+	}
+
 	s.GoBody.Pn("func %sGetType() gi.GType {", name)
 
 	if _optNamespace == "GObject" || _optNamespace == "Gio" {
@@ -527,7 +533,6 @@ func pGetTypeFunc(s *SourceFile, name string) {
 
 	s.GoBody.Pn("return ret")
 	s.GoBody.Pn("}")
-
 	_getTypeNextId++
 }
 
