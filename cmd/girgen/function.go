@@ -732,6 +732,7 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 
 		if arrType == gi.ARRAY_TYPE_C {
 			elemTypeInfo := ti.ParamType(0)
+			defer elemTypeInfo.Unref()
 			elemTypeTag := elemTypeInfo.Tag()
 
 			type0 = getDebugType("array type c, elemTypeTag: %v, isPtr: %v", elemTypeTag, elemTypeInfo.IsPointer())
@@ -769,9 +770,22 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
 				type0 = "unsafe.Pointer"
 				expr = varRet + ".Pointer()"
+			} else if elemTypeTag == gi.TYPE_TAG_ARRAY {
+				// ti 数组的元素 elem 又是一个数组
+				elemArrType := elemTypeInfo.ArrayType()
+				if elemArrType == gi.ARRAY_TYPE_C {
+					elemElemType := elemTypeInfo.ParamType(0) // elem 数组的元素的类型
+					switch elemElemType.Tag() {
+					case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
+						type0 = "gi.CStrvArray"
+						expr = fmt.Sprintf("%v{ P: %v.Pointer() }", type0, varRet)
+						if isZeroTerm {
+							zeroTerm = true
+						}
+					}
+				}
 			}
 
-			elemTypeInfo.Unref()
 		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
 			type0 = getGLibType("ByteArray")
 			expr = fmt.Sprintf("%v.Pointer()", varRet)
