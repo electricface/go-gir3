@@ -29,9 +29,9 @@ import (
 )
 
 type config struct {
-	Black     []string `json:"black"`
-	CIncludes []string `json:"cIncludes"`
-	NoGetType []string `json:"noGetType"` // 不自动生成 GetType 方法的类型列表。
+	DeniedFuncs []string `json:"deniedFuncs"` // 不自动生成的函数列表
+	CIncludes   []string `json:"cIncludes"`
+	NoGetType   []string `json:"noGetType"` // 不自动生成 GetType 方法的类型列表。
 }
 
 func loadConfig(filename string, cfg *config) error {

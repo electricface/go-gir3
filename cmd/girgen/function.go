@@ -444,8 +444,8 @@ func (ctx *pFuncContext) print(b *SourceBlock) {
 		identifyName = ctx.container.Name() + "." + ctx.fnName
 	}
 
-	if strSliceContains(_cfg.Black, identifyName) {
-		b.Pn("\n// black function %s\n", identifyName)
+	if strSliceContains(_cfg.DeniedFuncs, identifyName) {
+		b.Pn("\n// denied function %s\n", identifyName)
 		return
 	}
 
