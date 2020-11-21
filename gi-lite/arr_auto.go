@@ -59,6 +59,16 @@ func (arr DoubleArray) Copy() []float64 {
 	return result
 }
 
+func (arr *DoubleArray) SetLenZT() {
+	slice := (*(*[arrLenMax]float64)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type FloatArray struct {
 	P   unsafe.Pointer
 	Len int
@@ -113,6 +123,16 @@ func (arr FloatArray) Copy() []float32 {
 	slice := (*(*[arrLenMax]float32)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *FloatArray) SetLenZT() {
+	slice := (*(*[arrLenMax]float32)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }
 
 type UniCharArray struct {
@@ -171,6 +191,16 @@ func (arr UniCharArray) Copy() []rune {
 	return result
 }
 
+func (arr *UniCharArray) SetLenZT() {
+	slice := (*(*[arrLenMax]rune)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type Int8Array struct {
 	P   unsafe.Pointer
 	Len int
@@ -225,6 +255,16 @@ func (arr Int8Array) Copy() []int8 {
 	slice := (*(*[arrLenMax]int8)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *Int8Array) SetLenZT() {
+	slice := (*(*[arrLenMax]int8)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }
 
 type Uint8Array struct {
@@ -283,6 +323,16 @@ func (arr Uint8Array) Copy() []uint8 {
 	return result
 }
 
+func (arr *Uint8Array) SetLenZT() {
+	slice := (*(*[arrLenMax]uint8)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type Int16Array struct {
 	P   unsafe.Pointer
 	Len int
@@ -337,6 +387,16 @@ func (arr Int16Array) Copy() []int16 {
 	slice := (*(*[arrLenMax]int16)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *Int16Array) SetLenZT() {
+	slice := (*(*[arrLenMax]int16)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }
 
 type Uint16Array struct {
@@ -395,6 +455,16 @@ func (arr Uint16Array) Copy() []uint16 {
 	return result
 }
 
+func (arr *Uint16Array) SetLenZT() {
+	slice := (*(*[arrLenMax]uint16)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type Int32Array struct {
 	P   unsafe.Pointer
 	Len int
@@ -449,6 +519,16 @@ func (arr Int32Array) Copy() []int32 {
 	slice := (*(*[arrLenMax]int32)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *Int32Array) SetLenZT() {
+	slice := (*(*[arrLenMax]int32)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }
 
 type Uint32Array struct {
@@ -507,6 +587,16 @@ func (arr Uint32Array) Copy() []uint32 {
 	return result
 }
 
+func (arr *Uint32Array) SetLenZT() {
+	slice := (*(*[arrLenMax]uint32)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type Int64Array struct {
 	P   unsafe.Pointer
 	Len int
@@ -561,6 +651,16 @@ func (arr Int64Array) Copy() []int64 {
 	slice := (*(*[arrLenMax]int64)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *Int64Array) SetLenZT() {
+	slice := (*(*[arrLenMax]int64)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }
 
 type Uint64Array struct {
@@ -619,6 +719,16 @@ func (arr Uint64Array) Copy() []uint64 {
 	return result
 }
 
+func (arr *Uint64Array) SetLenZT() {
+	slice := (*(*[arrLenMax]uint64)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
+
 type GTypeArray struct {
 	P   unsafe.Pointer
 	Len int
@@ -673,4 +783,14 @@ func (arr GTypeArray) Copy() []GType {
 	slice := (*(*[arrLenMax]GType)(arr.P))[:arr.Len:arr.Len]
 	copy(result, slice)
 	return result
+}
+
+func (arr *GTypeArray) SetLenZT() {
+	slice := (*(*[arrLenMax]GType)(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
 }

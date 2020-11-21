@@ -275,16 +275,3 @@ func NewPointerArray(values ...unsafe.Pointer) PointerArray {
 	copy(slice, values)
 	return arr
 }
-
-func (arr *Uint8Array) SetLenZT() {
-	slice := (*(*[arrLenMax]uint8)(arr.P))[:arrLenMax:arrLenMax]
-	for i, value := range slice {
-		if value == 0 {
-			// 0 1 2
-			// 1 2 0
-			// 比如长度为3 的数组，最后一个是零值，实际是2个元素，在 value == 0 时，i 是 2, 所以 arr.Len = i
-			arr.Len = i
-			break
-		}
-	}
-}

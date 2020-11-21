@@ -85,6 +85,15 @@ func (arr {{ .TypeName }}Array) Copy() []{{ .GoElemType }} {
 	return result
 }
 
+func (arr *{{ .TypeName }}Array) SetLenZT() {
+	slice := (*(*[arrLenMax]{{ .GoElemType }})(arr.P))[:arrLenMax:arrLenMax]
+	for i, value := range slice {
+		if value == 0 {
+			arr.Len = i
+			break
+		}
+	}
+}
 `
 
 type params struct {
