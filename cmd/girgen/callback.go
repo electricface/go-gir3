@@ -44,6 +44,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		argTypeInfo := argInfo.Type()
 
 		paramName := varReg.registerParam(i, argInfo.Name())
+		fieldName := snake2Camel(argInfo.Name())
 		dir := argInfo.Direction()
 		switch dir {
 		case gi.DIRECTION_IN:
@@ -57,7 +58,6 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 				continue
 			}
 
-			fieldName := "F_" + paramName
 			fields = append(fields, fieldName+" "+parseResult.goType)
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
@@ -68,7 +68,6 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 			paramNameTypes = append(paramNameTypes, paramName+" "+parseResult.cgoType)
 			cParamTypeNames = append(cParamTypeNames, parseResult.cType+" "+paramName)
 
-			fieldName := "F_" + paramName
 			fields = append(fields, fieldName+" "+parseResult.goType)
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
@@ -79,7 +78,6 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 			paramNameTypes = append(paramNameTypes, paramName+" "+parseResult.cgoType)
 			cParamTypeNames = append(cParamTypeNames, parseResult.cType+" "+paramName)
 
-			fieldName := "F_" + paramName
 			fields = append(fields, fieldName+" "+parseResult.goType)
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
@@ -97,7 +95,11 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	s.CBody.Pn("    return (void*)(%v);", wrapperFuncName)
 	s.CBody.Pn("}")
 
-	s.GoBody.Pn("type %vStruct struct {", name)
+	argsStructName := name + "Arg"
+	if len(fields) > 1 {
+		argsStructName += "s"
+	}
+	s.GoBody.Pn("type %v struct {", argsStructName)
 	for _, field := range fields {
 		s.GoBody.Pn(field)
 	}
@@ -117,7 +119,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		s.GoBody.Pn("if %v.Fn != nil {", varClosure) // begin if 0
 
 		varArgs := varReg.alloc("args")
-		s.GoBody.Pn("%v := &%vStruct{", varArgs, name)
+		s.GoBody.Pn("%v := &%v{", varArgs, argsStructName)
 		for _, line := range fieldSetLines {
 			s.GoBody.Pn(line)
 		}
