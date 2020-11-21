@@ -727,29 +727,17 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		arrType := ti.ArrayType()
 		lenArgIdx := ti.ArrayLength()
 		isZeroTerm := ti.IsZeroTerminated()
-
 		type0 = getDebugType("array type: %v, isZeroTerm: %v", arrType, isZeroTerm)
 
-		if arrType == gi.ARRAY_TYPE_C {
+		switch arrType {
+		case gi.ARRAY_TYPE_C:
 			elemTypeInfo := ti.ParamType(0)
 			defer elemTypeInfo.Unref()
 			elemTypeTag := elemTypeInfo.Tag()
-
 			type0 = getDebugType("array type c, elemTypeTag: %v, isPtr: %v", elemTypeTag, elemTypeInfo.IsPointer())
 
-			elemType := getArgumentType(elemTypeTag)
-			if elemType != "" && !elemTypeInfo.IsPointer() {
-				type0 = "gi." + elemType + "Array"
-
-				argName := "0"
-				if lenArgIdx >= 0 {
-					argInfo := fi.Arg(lenArgIdx)
-					argName = argInfo.Name()
-					argInfo.Unref()
-				}
-				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: int(%s) }", type0, varRet, argName)
-
-			} else if elemTypeTag == gi.TYPE_TAG_UTF8 || elemTypeTag == gi.TYPE_TAG_FILENAME {
+			switch elemTypeTag {
+			case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 				type0 = "gi.CStrArray"
 				lenExpr := "-1" // zero-terminated 以零结尾的数组
 				if isZeroTerm {
@@ -758,19 +746,23 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 					lenExpr = "int(" + varReg.getParam(lenArgIdx) + ")"
 				}
 				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
-			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && elemTypeInfo.IsPointer() {
-				type0 = "gi.PointerArray"
-				lenExpr := "-1" // zero-terminated 以零结尾的数组
-				if isZeroTerm {
-					zeroTerm = true
+			case gi.TYPE_TAG_INTERFACE:
+				if elemTypeInfo.IsPointer() {
+					type0 = "gi.PointerArray"
+					lenExpr := "-1" // zero-terminated 以零结尾的数组
+					if isZeroTerm {
+						zeroTerm = true
+					} else {
+						lenExpr = "int(" + varReg.getParam(lenArgIdx) + ")"
+					}
+					expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
 				} else {
-					lenExpr = "int(" + varReg.getParam(lenArgIdx) + ")"
+					// TODO 也许可以处理得更好
+					type0 = "unsafe.Pointer"
+					expr = varRet + ".Pointer()"
 				}
-				expr = fmt.Sprintf("%v{ P: %v.Pointer(), Len: %v }", type0, varRet, lenExpr)
-			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
-				type0 = "unsafe.Pointer"
-				expr = varRet + ".Pointer()"
-			} else if elemTypeTag == gi.TYPE_TAG_ARRAY {
+
+			case gi.TYPE_TAG_ARRAY:
 				// ti 数组的元素 elem 又是一个数组
 				elemArrType := elemTypeInfo.ArrayType()
 				if elemArrType == gi.ARRAY_TYPE_C {
@@ -784,9 +776,29 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 						}
 					}
 				}
+
+			default:
+				elemType := getArgumentType(elemTypeTag)
+				if elemType != "" && !elemTypeInfo.IsPointer() {
+					type0 = "gi." + elemType + "Array"
+
+					lenExpr := ""
+					if lenArgIdx >= 0 {
+						argInfo := fi.Arg(lenArgIdx)
+						lenExpr = "int(" + argInfo.Name() + ")"
+						argInfo.Unref()
+					}
+					if lenExpr != "" {
+						lenExpr = "Len: " + lenExpr
+					}
+					expr = fmt.Sprintf("%v{ P: %v.Pointer(), %v }", type0, varRet, lenExpr)
+					if lenExpr == "" && isZeroTerm {
+						zeroTerm = true
+					}
+				}
 			}
 
-		} else if arrType == gi.ARRAY_TYPE_BYTE_ARRAY {
+		case gi.ARRAY_TYPE_BYTE_ARRAY:
 			type0 = getGLibType("ByteArray")
 			expr = fmt.Sprintf("%v.Pointer()", varRet)
 			field = ".P"
