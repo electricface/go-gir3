@@ -802,6 +802,11 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 			type0 = getGLibType("ByteArray")
 			expr = fmt.Sprintf("%v.Pointer()", varRet)
 			field = ".P"
+
+		case gi.ARRAY_TYPE_PTR_ARRAY:
+			type0 = getGLibType("PtrArray")
+			expr = fmt.Sprintf("%v.Pointer()", varRet)
+			field = ".P"
 		}
 	}
 
