@@ -1275,7 +1275,7 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackA
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_CALLBACK {
 				type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
-				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGetPointer_my%v())",
+				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
 					getPkgPrefix(bi.Namespace()), bi.Name())
 			} else if biType == gi.INFO_TYPE_UNRESOLVED {
 				// 如果发现此种未解析的类型，应该使用黑名单屏蔽。

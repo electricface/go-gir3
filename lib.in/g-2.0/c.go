@@ -437,7 +437,7 @@ func (v List) ForEach(fn func(item unsafe.Pointer)) {
 
 func (v List) ForEachC(fn func(args interface{})) {
 	fnId := gi.RegisterFunc(fn, 0)
-	C.g_list_foreach(v.p(), C.GFunc(GetPointer_myFunc()), C.gpointer(gi.Uint2Ptr(fnId)))
+	C.g_list_foreach(v.p(), C.GFunc(GetFuncWrapper()), C.gpointer(gi.Uint2Ptr(fnId)))
 	gi.UnregisterFunc(fnId)
 }
 

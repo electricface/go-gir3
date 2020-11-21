@@ -90,11 +90,11 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		argInfo.Unref()
 	}
 
-	myFuncName := "my" + _optNamespace + name
+	wrapperFuncName := "gi" + _optNamespace + name
 
-	s.CBody.Pn("extern void %s(%v);", myFuncName, strings.Join(cParamTypeNames, ", "))
-	s.CBody.Pn("static void* getPointer_%v() {", myFuncName)
-	s.CBody.Pn("return (void*)(%v);", myFuncName)
+	s.CBody.Pn("extern void %s(%v);", wrapperFuncName, strings.Join(cParamTypeNames, ", "))
+	s.CBody.Pn("static void* get%vWrapper() {", _optNamespace+name)
+	s.CBody.Pn("    return (void*)(%v);", wrapperFuncName)
 	s.CBody.Pn("}")
 
 	s.GoBody.Pn("type %vStruct struct {", name)
@@ -103,12 +103,12 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	}
 	s.GoBody.Pn("}")
 
-	s.GoBody.Pn("func GetPointer_my%v() unsafe.Pointer {", name)
-	s.GoBody.Pn("return unsafe.Pointer(C.getPointer_%v())", myFuncName)
+	s.GoBody.Pn("func Get%vWrapper() unsafe.Pointer {", name)
+	s.GoBody.Pn("return unsafe.Pointer(C.get%vWrapper())", _optNamespace+name)
 	s.GoBody.Pn("}")
 
-	s.GoBody.Pn("//export %v", myFuncName)
-	s.GoBody.Pn("func %v(%v) {", myFuncName, strings.Join(paramNameTypes, ", "))
+	s.GoBody.Pn("//export %v", wrapperFuncName)
+	s.GoBody.Pn("func %v(%v) {", wrapperFuncName, strings.Join(paramNameTypes, ", "))
 
 	if foundUserData {
 		varClosure := varReg.alloc("closure")
