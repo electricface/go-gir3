@@ -23,10 +23,15 @@
 package g
 
 import (
-	"fmt"
 	"unsafe"
+
+	"github.com/linuxdeepin/go-gir/gi"
 )
 
 func handleDestroyNotify(data unsafe.Pointer) {
-	fmt.Println("destory notify", data)
+	id := uint(uintptr(data))
+	closure := gi.GetFunc(id)
+	if closure.Scope == gi.ScopeNotified {
+		gi.UnregisterFunc(id)
+	}
 }
