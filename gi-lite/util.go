@@ -30,6 +30,14 @@ import (
 	"unsafe"
 )
 
+var debugOn bool
+
+func init() {
+	if os.Getenv("DEBUG_GO_GIR_GI") == "1" {
+		debugOn = true
+	}
+}
+
 type Closure struct {
 	Fn    func(interface{})
 	Scope Scope
@@ -44,7 +52,23 @@ const (
 	ScopeNotified
 )
 
-var _funcNextId uint
+func (s Scope) String() (str string) {
+	switch s {
+	case ScopeInvalid:
+		str = "invalid"
+	case ScopeCall:
+		str = "call"
+	case ScopeAsync:
+		str = "async"
+	case ScopeNotified:
+		str = "notified"
+	default:
+		str = fmt.Sprintf("invalid-scope(%d)", int(s))
+	}
+	return
+}
+
+var _funcNextId uint = 1
 var _funcMap = make(map[uint]Closure)
 var _funcMapMu sync.RWMutex
 
@@ -57,6 +81,9 @@ func RegisterFunc(fn func(v interface{}), scope Scope) uint {
 		Scope: scope,
 	}
 	_funcNextId++
+	if debugOn {
+		fmt.Printf("gi.RegisterFunc %p %v id: %v\n", fn, scope, id)
+	}
 
 	_funcMapMu.Unlock()
 	return id
@@ -64,6 +91,14 @@ func RegisterFunc(fn func(v interface{}), scope Scope) uint {
 
 func UnregisterFunc(id uint) {
 	_funcMapMu.Lock()
+	if debugOn {
+		closure, ok := _funcMap[id]
+		if ok {
+			fmt.Printf("gi.UnregisterFunc %p %v id: %v\n", closure.Fn, closure.Scope, id)
+		} else {
+			fmt.Printf("gi.UnregisterFunc not found id: %v\n", id)
+		}
+	}
 	delete(_funcMap, id)
 	_funcMapMu.Unlock()
 }

@@ -35,6 +35,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	var cParamTypeNames []string
 	var fields []string
 	var fieldSetLines []string
+	var handleArgs []string
 
 	var varReg VarReg
 	numArgs := fi.NumArg()
@@ -62,6 +63,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
 			fieldSetLines = append(fieldSetLines, fieldSetLine)
+			handleArgs = append(handleArgs, parseResult.expr)
 
 		case gi.DIRECTION_OUT:
 			parseResult := parseCbArgTypeDirOut(paramName, argTypeInfo)
@@ -72,6 +74,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
 			fieldSetLines = append(fieldSetLines, fieldSetLine)
+			handleArgs = append(handleArgs, parseResult.expr)
 
 		case gi.DIRECTION_INOUT:
 			parseResult := parseCbArgTypeDirInOut(paramName, argTypeInfo)
@@ -82,6 +85,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 
 			fieldSetLine := fmt.Sprintf("%v: %v,", fieldName, parseResult.expr)
 			fieldSetLines = append(fieldSetLines, fieldSetLine)
+			handleArgs = append(handleArgs, parseResult.expr)
 		}
 
 		argTypeInfo.Unref()
@@ -135,8 +139,12 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		s.GoBody.Pn("}") // end if 0
 	} else {
 		// 没有 user_data 参数
-		// TODO
-		s.GoBody.Pn("// TODO: not found user_data")
+		if strSliceContains(_cfg.ManualCallbacks, name) {
+			s.GoBody.Pn("handleDestroyNotify(%v)", strings.Join(handleArgs, ", "))
+		} else {
+			// TODO
+			s.GoBody.Pn("// TODO: not found user_data")
+		}
 	}
 
 	s.GoBody.Pn("}") // end func

@@ -1,3 +1,4 @@
 {
-    "DeniedFuncs": ["IdleAdd", "TimeoutAdd", "TimeoutAddSeconds"]
+    "deniedFuncs": ["IdleAdd", "TimeoutAdd", "TimeoutAddSeconds"],
+    "manualCallbacks": ["DestroyNotify"]
 }
