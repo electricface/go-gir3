@@ -92,9 +92,14 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		argInfo.Unref()
 	}
 
+	retType := fi.ReturnType()
+	defer retType.Unref()
+	varResult := varReg.alloc("result")
+	retResult := parseCbRet(retType, varResult)
+
 	wrapperFuncName := "gi" + _optNamespace + name
 
-	s.CBody.Pn("extern void %s(%v);", wrapperFuncName, strings.Join(cParamTypeNames, ", "))
+	s.CBody.Pn("extern %v %v(%v);", retResult.cType, wrapperFuncName, strings.Join(cParamTypeNames, ", "))
 	s.CBody.Pn("static void* get%vWrapper() {", _optNamespace+name)
 	s.CBody.Pn("    return (void*)(%v);", wrapperFuncName)
 	s.CBody.Pn("}")
@@ -114,7 +119,12 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	s.GoBody.Pn("}")
 
 	s.GoBody.Pn("//export %v", wrapperFuncName)
-	s.GoBody.Pn("func %v(%v) {", wrapperFuncName, strings.Join(paramNameTypes, ", "))
+	retPart := ""
+	varCResult := varReg.alloc("c_result")
+	if retResult.goType != "" {
+		retPart = fmt.Sprintf("(%v %v)", varCResult, retResult.cgoType)
+	}
+	s.GoBody.Pn("func %v(%v) %v {", wrapperFuncName, strings.Join(paramNameTypes, ", "), retPart)
 
 	if foundUserData {
 		varClosure := varReg.alloc("closure")
@@ -129,7 +139,18 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		}
 
 		s.GoBody.Pn("}") // end struct
-		s.GoBody.Pn("%v.Fn(%v)", varClosure, varArgs)
+		varFn := varReg.alloc("fn")
+
+		fnType := fmt.Sprintf("func(*%v) %v", argsStructName, retResult.goType)
+		s.GoBody.Pn("%v := %v.Fn.(%v)", varFn, varClosure, fnType)
+
+		// call fn
+		if retResult.goType != "" {
+			s.GoBody.Pn("%v := %v(%v)", varResult, varFn, varArgs)
+			s.GoBody.Pn("%v = %v", varCResult, retResult.expr)
+		} else {
+			s.GoBody.Pn("%v(%v)", varFn, varArgs)
+		}
 
 		// 回调函数调用之后
 		s.GoBody.Pn("if %v.Scope == gi.ScopeAsync {", varClosure) // begin if 1
@@ -137,6 +158,7 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		s.GoBody.Pn("}") // end if 1
 
 		s.GoBody.Pn("}") // end if 0
+
 	} else {
 		// 没有 user_data 参数
 		if strSliceContains(_cfg.ManualCallbacks, name) {
@@ -147,7 +169,162 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 		}
 	}
 
+	if retResult.goType != "" {
+		s.GoBody.Pn("return")
+	}
+
 	s.GoBody.Pn("}") // end func
+}
+
+type parseCbRetResult struct {
+	cgoType string
+	cType   string
+	goType  string
+	expr    string
+}
+
+func parseCbRet(retType *gi.TypeInfo, varResult string) *parseCbRetResult {
+	tag := retType.Tag()
+	isPtr := retType.IsPointer()
+
+	cgoType := "C.gpointer"
+	cType := "gpointer"
+	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("%v(%v)", cgoType, varResult)
+
+	switch tag {
+	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
+		if isPtr {
+			cgoType = "*C.gchar"
+			cType = "gchar*"
+			goType = "string"
+			expr = fmt.Sprintf("(%v)(C.CString(%v))", cgoType, varResult)
+		}
+
+	case gi.TYPE_TAG_BOOLEAN,
+		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
+		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
+		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
+		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
+		// 简单类型
+		if !isPtr {
+			cType = getCTypeWithTag(tag)
+			cgoType = "C." + cType
+			goType = getTypeWithTag(tag)
+			expr = fmt.Sprintf("%v(%v)", cgoType, varResult)
+			if tag == gi.TYPE_TAG_BOOLEAN {
+				expr = fmt.Sprintf("%v(gi.Bool2Int(%v))", cgoType, varResult)
+			}
+		} else {
+			cType = getCTypeWithTag(tag) + "*"
+			cgoType = "*C." + getCTypeWithTag(tag)
+			goType = "*" + getTypeWithTag(tag)
+			expr = fmt.Sprintf("(%v)(unsafe.Pointer(%v))", cgoType, varResult)
+		}
+
+	case gi.TYPE_TAG_UNICHAR:
+		if !isPtr {
+			cType = "gunichar"
+			cgoType = "C.gunichar"
+			goType = "rune"
+			expr = fmt.Sprintf("%v(%v)", cgoType, varResult)
+		}
+
+	case gi.TYPE_TAG_VOID:
+		if isPtr {
+			cgoType = "C.gpointer"
+			cType = "gpointer"
+			goType = "unsafe.Pointer"
+			expr = fmt.Sprintf("%v(unsafe.Pointer(%v))", cgoType, varResult)
+			// TODO 可能可以不需要 unsafe.Pointer()
+		} else {
+			cgoType = ""
+			cType = "void"
+			goType = ""
+		}
+
+	case gi.TYPE_TAG_INTERFACE:
+		//ii := argTypeInfo.Interface()
+		//ifcType := ii.Type()
+		//if ifcType == gi.INFO_TYPE_ENUM || ifcType == gi.INFO_TYPE_FLAGS {
+		//	if !isPtr {
+		//		identPrefix := getCIdentifierPrefix(ii)
+		//		name := ii.Name()
+		//		cType = identPrefix + name
+		//		cgoType = "C." + cType
+		//
+		//		name = getTypeName(ii) // 加上可能的包前缀
+		//		if ifcType == gi.INFO_TYPE_ENUM {
+		//			goType = getEnumTypeName(name)
+		//		} else {
+		//			// flags
+		//			goType = getFlagsTypeName(name)
+		//		}
+		//		expr = fmt.Sprintf("%v(%v)", goType, paramName)
+		//	}
+		//} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
+		//	ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
+		//	if isPtr {
+		//		identPrefix := getCIdentifierPrefix(ii)
+		//		name := ii.Name()
+		//		if identPrefix == "cairo" {
+		//			if name == "Context" {
+		//				name = "_t"
+		//			} else {
+		//				name = "_" + strings.ToLower(name) + "_t"
+		//			}
+		//		}
+		//		cType = identPrefix + name + "*"
+		//		cgoType = "*C." + identPrefix + name
+		//
+		//		goType = getTypeName(ii)
+		//		expr = fmt.Sprintf("%v{P: unsafe.Pointer(%v) }", goType, paramName)
+		//		if ifcType == gi.INFO_TYPE_OBJECT {
+		//			expr = fmt.Sprintf("%vWrap%v(unsafe.Pointer(%v))",
+		//				getPkgPrefix(ii.Namespace()), name, paramName)
+		//		}
+		//	}
+		//}
+		//ii.Unref()
+
+	case gi.TYPE_TAG_ARRAY:
+		//arrType := argTypeInfo.ArrayType()
+		//if arrType == gi.ARRAY_TYPE_C {
+		//	elemTypeInfo := argTypeInfo.ParamType(0)
+		//	elemTypeTag := elemTypeInfo.Tag()
+		//
+		//	elemType := getArgumentType(elemTypeTag)
+		//	if elemType != "" && !elemTypeInfo.IsPointer() {
+		//		cgoType = "C.gpointer"
+		//		cType = "gpointer"
+		//		goType = "gi." + elemType + "Array"
+		//		expr = fmt.Sprintf("%s{P: unsafe.Pointer(%v)}", goType, paramName)
+		//		// TODO length
+		//
+		//	} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
+		//		goType = "unsafe.Pointer"
+		//		cType = "gpointer"
+		//		cgoType = "C.gpointer"
+		//		expr = fmt.Sprintf("unsafe.Pointer(%v)", paramName)
+		//	}
+		//
+		//	elemTypeInfo.Unref()
+		//}
+
+	case gi.TYPE_TAG_ERROR:
+		//cType = "GError**"
+		//cgoType = "**C.GError"
+		//goType = "unsafe.Pointer"
+		//expr = fmt.Sprintf("unsafe.Pointer(%v)", paramName)
+	}
+
+	return &parseCbRetResult{
+		cgoType: cgoType,
+		cType:   cType,
+		goType:  goType,
+		expr:    expr,
+	}
 }
 
 type parseCbArgTypeDirInOutResult struct {

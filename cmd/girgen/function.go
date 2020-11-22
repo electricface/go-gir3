@@ -1250,7 +1250,7 @@ func parseArgTypeDirIn(varArg, realParamName string, argInfo *gi.ArgInfo, varReg
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s)", varArg)
 
 			if callbackArgInfo != nil {
-				type0 = "func(v interface{})"
+				type0 = "interface{}"
 				varCId := varReg.alloc("cId")
 
 				scopeType := callbackArgInfo.Scope()

@@ -39,7 +39,7 @@ func init() {
 }
 
 type Closure struct {
-	Fn    func(interface{})
+	Fn    interface{}
 	Scope Scope
 }
 
@@ -72,7 +72,7 @@ var _funcNextId uint = 1
 var _funcMap = make(map[uint]Closure)
 var _funcMapMu sync.RWMutex
 
-func RegisterFunc(fn func(v interface{}), scope Scope) uint {
+func RegisterFunc(fn interface{}, scope Scope) uint {
 	_funcMapMu.Lock()
 
 	id := _funcNextId
