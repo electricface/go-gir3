@@ -150,7 +150,11 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 
 	// 键是 user_data 参数的索引，值是 callback 参数的索引，
 	// 提供一个从 user_data 参数找到 callback 参数的信息。
-	closureMap := make(map[int]int)
+	closureDataCbMap := make(map[int]int)
+
+	// 键是 destroy func 参数的索引，值是 callback 参数的索引，
+	// 提供一个从 destroy func 参数找到 callback 参数的信息。
+	closureDestroyCbMap := make(map[int]int)
 
 	numArgs := fi.NumArg()
 	for argIdx := argIdxStart; argIdx < numArgs; argIdx++ {
@@ -164,16 +168,33 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 		ctx.commentLines = append(ctx.commentLines, paramComment, "")
 
-		closureIdx := argInfo.Closure() // 该参数的 user_data 的参数的索引
-		if closureIdx > 0 {
-			if argIdxStart == 1 {
-				closureIdx++
-			}
-			closureMap[closureIdx] = argIdx
-		}
-
 		argTypeInfo := argInfo.Type()
 		typeTag := argTypeInfo.Tag()
+		isArgClosureData := false // 此参数是否是 closure 的 user data
+		if typeTag == gi.TYPE_TAG_VOID && argTypeInfo.IsPointer() {
+			// 参数是 void* 类型
+			isArgClosureData = true
+		}
+
+		if !isArgClosureData {
+			// 确定了此参数是 closure 的 callback，而非 closure 的 user data。
+			closureIdx := argInfo.Closure() // closureIdx 是 user_data 参数的索引
+			if closureIdx > 0 {
+				if argIdxStart == 1 {
+					closureIdx++
+				}
+				closureDataCbMap[closureIdx] = argIdx
+			}
+		}
+
+		destroyIdx := argInfo.Destroy()
+		if destroyIdx > 0 {
+			if argIdxStart == 1 {
+				destroyIdx++
+			}
+			closureDestroyCbMap[destroyIdx] = argIdx
+		}
+
 		if typeTag == gi.TYPE_TAG_ARRAY {
 			lenArgIdx := argTypeInfo.ArrayLength() // 是该数组类型参数的长度参数的 index
 			if lenArgIdx >= 0 {
@@ -223,18 +244,28 @@ func pFunction(s *SourceFile, fi *gi.FunctionInfo, idxLv1, idxLv2 int) {
 		}
 
 		paramName := ctx.varReg.getParam(argIdx)
+		realParamName := paramName
 
 		switch dir {
 		case gi.DIRECTION_IN:
 			// 处理方向为 in 的参数
 			var callbackArgInfo *gi.ArgInfo
-			if callbackIdx, ok := closureMap[argIdx]; ok {
+			if callbackIdx, ok := closureDataCbMap[argIdx]; ok {
 				callbackArgInfo = fi.Arg(callbackIdx)
-				// TODO 应该把 paramName 改成更好的名字
-				paramName = ctx.varReg.alloc("fn")
+				// data 参数使用 callback 参数的名字
+				// 这里修改了 paramName， 但是 realParamName 保留了真参数名
+				paramName = ctx.varReg.getParam(callbackIdx)
+			} else if callbackIdx, ok := closureDestroyCbMap[argIdx]; ok {
+				callbackArgInfo = fi.Arg(callbackIdx)
 			}
 
-			ctx.pFuncArgDirIn(paramName, argTypeInfo, callbackArgInfo)
+			ctx.pFuncArgDirIn(paramName, realParamName, argInfo, callbackArgInfo)
+
+			if callbackArgInfo != nil {
+				callbackArgInfo.Unref()
+				callbackArgInfo = nil
+			}
+
 		case gi.DIRECTION_INOUT:
 			// TODO：处理 dir 为 inout 的
 			type0 := "int/*TODO:DIR_INOUT*/"
@@ -388,17 +419,13 @@ func (ctx *pFuncContext) pFuncArgDirOut(paramName string, argInfo *gi.ArgInfo, i
 	ctx.beforeRetLines = append(ctx.beforeRetLines, parseResult.beforeRetLines...)
 }
 
-func (ctx *pFuncContext) pFuncArgDirIn(paramName string, argTypeInfo *gi.TypeInfo, callbackArgInfo *gi.ArgInfo) {
-	parseResult := parseArgTypeDirIn(paramName, argTypeInfo, &ctx.varReg, callbackArgInfo)
-
-	if callbackArgInfo != nil {
-		callbackArgInfo.Unref()
-	}
+func (ctx *pFuncContext) pFuncArgDirIn(paramName, realParamName string, argInfo *gi.ArgInfo, callbackArgInfo *gi.ArgInfo) {
+	parseResult := parseArgTypeDirIn(paramName, realParamName, argInfo, &ctx.varReg, callbackArgInfo)
 
 	type0 := parseResult.type0
 	ctx.beforeNewArgLines = append(ctx.beforeNewArgLines, parseResult.beforeArgLines...)
 
-	varArg := ctx.varReg.alloc("arg_" + paramName)
+	varArg := ctx.varReg.alloc("arg_" + realParamName)
 	ctx.argNames = append(ctx.argNames, varArg)
 	ctx.newArgLines = append(ctx.newArgLines, fmt.Sprintf("%v := %v", varArg, parseResult.newArgExpr))
 
@@ -1168,7 +1195,9 @@ type parseArgTypeDirInResult struct {
 	afterCallLines []string // 在 invoker.Call() 之后执行的语句
 }
 
-func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackArgInfo *gi.ArgInfo) *parseArgTypeDirInResult {
+func parseArgTypeDirIn(varArg, realParamName string, argInfo *gi.ArgInfo, varReg *VarReg, callbackArgInfo *gi.ArgInfo) *parseArgTypeDirInResult {
+	ti := argInfo.Type()
+	defer ti.Unref()
 	// 处理 direction 为 in 的情况
 	var beforeArgLines []string
 	var afterCallLines []string
@@ -1279,9 +1308,32 @@ func parseArgTypeDirIn(varArg string, ti *gi.TypeInfo, varReg *VarReg, callbackA
 				type0 = getEnumTypeName(getTypeName(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_CALLBACK {
-				type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
-				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
-					getPkgPrefix(bi.Namespace()), bi.Name())
+				biNs := bi.Namespace()
+				biName := bi.Name()
+				if callbackArgInfo == nil {
+					if argInfo.Closure() > 0 {
+						// 此参数作为 closure 的 callback，自动填。
+						type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
+						newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
+							getPkgPrefix(biNs), biName)
+					} else {
+						// 此参数不是 closure 的 callback
+						type0 = "unsafe.Pointer"
+						newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varArg)
+					}
+				} else {
+					// 此参数作为 closure 的 destroy notify。
+					type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
+					newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
+						getPkgPrefix(biNs), biName)
+					if !(biNs == "GLib" && biName == "DestroyNotify") {
+						afterCallLines = append(afterCallLines,
+							fmt.Sprintf("// WARN: type of this arg is not GLib.DestroyNotify, varArg: %v, "+
+								"realParamName: %v, bi is %v.%v",
+								varArg, realParamName, biNs, biName))
+					}
+				}
+
 			} else if biType == gi.INFO_TYPE_UNRESOLVED {
 				// 如果发现此种未解析的类型，应该使用黑名单屏蔽。
 				type0 = "int /* TYPE_UNRESOLVED */"
