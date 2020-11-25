@@ -26,6 +26,8 @@ package gi
    #include <girepository.h>
    #include <girffi.h>
    #include <ffi.h>
+   #include <glib.h>
+	#include <stdio.h>
 
    static inline void free_string(char *p) { free(p); }
    static inline void free_gstring(gchar *p) { if (p) g_free(p); }
@@ -46,13 +48,39 @@ package gi
    	ffi_call(cif, fn, rvalue, avalue);
    }
 
-   #cgo pkg-config: gobject-introspection-1.0 gobject-introspection-no-export-1.0 libffi
+extern void goGiClosureHandle (ffi_cif *cif,
+                     void    *result,
+                     void   **args,
+                     void    *data);
+
+static ffi_closure *
+_g_callable_info_prepare_closure (GICallableInfo *callable_info,
+                                 ffi_cif *cif, gpointer user_data) {
+	return g_callable_info_prepare_closure(callable_info, cif, goGiClosureHandle, user_data);
+}
+
+static void call_my_destroy_fn(void* ptr) {
+	GDestroyNotify d = ptr;
+	d( (void*)( 123) );
+}
+
+#cgo pkg-config: gobject-introspection-1.0 gobject-introspection-no-export-1.0 libffi
 */
 import "C"
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
+
+//export goGiClosureHandle
+func goGiClosureHandle(cif *C.ffi_cif, result unsafe.Pointer, args *unsafe.Pointer, userData unsafe.Pointer) {
+	fmt.Println("goGiClosureHandle", cif, result, args, userData)
+}
+
+func CallMyDestroyFn(ptr unsafe.Pointer) {
+	C.call_my_destroy_fn(ptr)
+}
 
 type GType uint
 
@@ -223,6 +251,35 @@ func (it InfoType) String() string {
 
 type CallableInfo struct {
 	BaseInfo
+}
+
+func WrapCallableInfo(p unsafe.Pointer) (ret CallableInfo) {
+	ret.P = p
+	return
+}
+
+func (v CallableInfo) p() *C.GICallableInfo {
+	return (*C.GICallableInfo)(v.P)
+}
+
+// g_callable_info_prepare_closure
+func (v CallableInfo) PrepareClosure(userData unsafe.Pointer) FFIClosure {
+	var cif C.ffi_cif
+	ret := C._g_callable_info_prepare_closure(v.p(), &cif, C.gpointer(userData))
+	return FFIClosure{p: ret}
+}
+
+// g_callable_info_free_closure
+func (v CallableInfo) FreeClosure(c FFIClosure) {
+	C.g_callable_info_free_closure(v.p(), c.p)
+}
+
+type FFIClosure struct {
+	p *C.ffi_closure
+}
+
+func (v FFIClosure) ExecPtr() unsafe.Pointer {
+	return unsafe.Pointer(v.p)
 }
 
 type RegisteredTypeInfo struct {
