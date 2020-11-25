@@ -38,6 +38,64 @@ func init() {
 	}
 }
 
+// 新的 ffi 实现的 closure
+type FClosure struct {
+	Fn           FClosureFunc
+	Scope        Scope
+	FFIClosure   FFIClosure
+	CallableInfo CallableInfo
+}
+
+type FClosureFunc func(result unsafe.Pointer, args []unsafe.Pointer)
+
+var _fClosureNextId uint = 1
+var _fClosureMap = make(map[uint]FClosure)
+var _fClosureMapMu sync.RWMutex
+
+func RegisterFClosure(fn FClosureFunc, scope Scope, callableInfo CallableInfo) (uint, unsafe.Pointer) {
+	_fClosureMapMu.Lock()
+
+	id := _fClosureNextId
+	_fClosureNextId++
+	ffiClosure := callableInfo.PrepareClosure(Uint2Ptr(id))
+	_fClosureMap[id] = FClosure{
+		Fn:           fn,
+		Scope:        scope,
+		CallableInfo: callableInfo,
+		FFIClosure:   ffiClosure,
+	}
+	if debugOn {
+		fmt.Printf("gi.RegisterFClosure %p %v id: %v\n", fn, scope, id)
+	}
+
+	_fClosureMapMu.Unlock()
+	return id, ffiClosure.ExecPtr()
+}
+
+func UnregisterFClosure(id uint) {
+	_fClosureMapMu.Lock()
+	closure, ok := _fClosureMap[id]
+	if ok {
+		if debugOn {
+			fmt.Printf("gi.UnregisterFunc %p %v id: %v\n", closure.Fn, closure.Scope, id)
+		}
+		closure.CallableInfo.FreeClosure(closure.FFIClosure)
+		delete(_fClosureMap, id)
+	} else {
+		if debugOn {
+			fmt.Printf("gi.UnregisterFunc not found id: %v\n", id)
+		}
+	}
+	_fClosureMapMu.Unlock()
+}
+
+func GetFClosure(id uint) FClosure {
+	_fClosureMapMu.RLock()
+	c := _fClosureMap[id]
+	_fClosureMapMu.RUnlock()
+	return c
+}
+
 type Closure struct {
 	Fn    interface{}
 	Scope Scope

@@ -22,46 +22,41 @@
 package gi
 
 /*
-   #include <stdlib.h>
-   #include <girepository.h>
-   #include <girffi.h>
-   #include <ffi.h>
-   #include <glib.h>
-	#include <stdio.h>
+#include <stdlib.h>
+#include <girepository.h>
+#include <girffi.h>
+#include <ffi.h>
+#include <glib.h>
+#include <stdio.h>
 
-   static inline void free_string(char *p) { free(p); }
-   static inline void free_gstring(gchar *p) { if (p) g_free(p); }
-   static inline char *gpointer_to_charp(gpointer p) { return p; }
-   static inline gchar **next_gcharptr(gchar **s) { return s+1; }
+static inline void free_string(char *p) { free(p); }
+static inline void free_gstring(gchar *p) { if (p) g_free(p); }
+static inline char *gpointer_to_charp(gpointer p) { return p; }
+static inline gchar **next_gcharptr(gchar **s) { return s+1; }
 
-   static void wrap_ffi_call(ffi_cif *cif, void (*fn)(void), void *rvalue,
-   	GIArgument *args, int n_args, void *out_args) {
+static void wrap_ffi_call(ffi_cif *cif, void (*fn)(void), void *rvalue,
+    GIArgument *args, int n_args, void *out_args) {
 
-   	void **avalue = NULL;
-   	if (n_args > 0) {
-   		avalue = (void**)alloca(sizeof(gpointer) * n_args);
-   		int i;
-   		for (i = 0; i < n_args; i++) {
-   			avalue[i] = &args[i];
-   		}
-   	}
-   	ffi_call(cif, fn, rvalue, avalue);
-   }
+    void **avalue = NULL;
+    if (n_args > 0) {
+        avalue = (void**)alloca(sizeof(gpointer) * n_args);
+        int i;
+        for (i = 0; i < n_args; i++) {
+            avalue[i] = &args[i];
+        }
+    }
+    ffi_call(cif, fn, rvalue, avalue);
+}
 
 extern void goGiClosureHandle (ffi_cif *cif,
                      void    *result,
                      void   **args,
                      void    *data);
 
-static ffi_closure *
-_g_callable_info_prepare_closure (GICallableInfo *callable_info,
-                                 ffi_cif *cif, gpointer user_data) {
-	return g_callable_info_prepare_closure(callable_info, cif, goGiClosureHandle, user_data);
-}
 
 static void call_my_destroy_fn(void* ptr) {
 	GDestroyNotify d = ptr;
-	d( (void*)( 123) );
+	d( (void*)( 0xdeadbeef) );
 }
 
 #cgo pkg-config: gobject-introspection-1.0 gobject-introspection-no-export-1.0 libffi
@@ -69,13 +64,21 @@ static void call_my_destroy_fn(void* ptr) {
 import "C"
 import (
 	"errors"
-	"fmt"
 	"unsafe"
 )
 
 //export goGiClosureHandle
 func goGiClosureHandle(cif *C.ffi_cif, result unsafe.Pointer, args *unsafe.Pointer, userData unsafe.Pointer) {
-	fmt.Println("goGiClosureHandle", cif, result, args, userData)
+	id := uint(uintptr(userData))
+	closure := GetFClosure(id)
+	if closure.Fn != nil {
+		nArgs := int(cif.nargs)
+		argsSlice := (*(*[arrLenMax]unsafe.Pointer)(unsafe.Pointer(args)))[:nArgs:nArgs]
+		closure.Fn(result, argsSlice)
+		if closure.Scope == ScopeAsync {
+			UnregisterFClosure(id)
+		}
+	}
 }
 
 func CallMyDestroyFn(ptr unsafe.Pointer) {
@@ -265,7 +268,7 @@ func (v CallableInfo) p() *C.GICallableInfo {
 // g_callable_info_prepare_closure
 func (v CallableInfo) PrepareClosure(userData unsafe.Pointer) FFIClosure {
 	var cif C.ffi_cif
-	ret := C._g_callable_info_prepare_closure(v.p(), &cif, C.gpointer(userData))
+	ret := C.g_callable_info_prepare_closure(v.p(), &cif, (*[0]byte)(C.goGiClosureHandle), C.gpointer(userData))
 	return FFIClosure{p: ret}
 }
 
