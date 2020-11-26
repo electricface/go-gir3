@@ -218,8 +218,6 @@ func (v Closure) native() *C.GClosure {
 // 用于信号处理的
 type SignalHandle uint
 
-type SourceFunc func() bool
-
 type SourceHandle uint
 
 // IdleAdd adds an idle source to the default main event loop
@@ -273,7 +271,7 @@ func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
 	// f returns false.  The error is ignored here, as this will
 	// always be a function.
 	f := func() interface{} {
-		return fn()
+		return fn(nil)
 	}
 	closure := ClosureNew(f)
 
@@ -435,10 +433,17 @@ func (v List) ForEach(fn func(item unsafe.Pointer)) {
 	}
 }
 
-func (v List) ForEachC(fn func(args interface{})) {
-	fnId := gi.RegisterFunc(fn, 0)
-	C.g_list_foreach(v.p(), C.GFunc(GetFuncWrapper()), C.gpointer(gi.Uint2Ptr(fnId)))
-	gi.UnregisterFunc(fnId)
+// g_list_foreach
+func (v List) ForEachC(fn Func) {
+	callableInfo := gi.GetCallableInfo("GLib", "Func")
+	cId, funcPtr := gi.RegisterFClosure(func(result unsafe.Pointer, args []unsafe.Pointer) {
+		CallFunc(fn, result, args)
+	}, gi.ScopeCall, callableInfo)
+
+	C.g_list_foreach(v.p(), (*[0]byte)(funcPtr), nil)
+
+	callableInfo.Unref()
+	gi.UnregisterFClosure(cId)
 }
 
 func (v *List) FullFree(fn func(item unsafe.Pointer)) {
@@ -632,17 +637,23 @@ func (v SList) Concat(list2 SList) SList {
 	return wrapSList(list)
 }
 
-// TODO: g_slist_foreach
 func (v SList) ForEach(fn func(item unsafe.Pointer)) {
 	for l := v.p(); l != nil; l = l.next {
 		fn(unsafe.Pointer(l.data))
 	}
 }
 
-func (v SList) ForEachC(fn func(v interface{})) {
-	fnId := gi.RegisterFunc(fn, 0)
-	C.g_slist_foreach(v.p(), C.GFunc(GetFuncWrapper()), C.gpointer(gi.Uint2Ptr(fnId)))
-	gi.UnregisterFunc(fnId)
+// g_slist_foreach
+func (v SList) ForEachC(fn Func) {
+	callableInfo := gi.GetCallableInfo("GLib", "Func")
+	cId, funcPtr := gi.RegisterFClosure(func(result unsafe.Pointer, args []unsafe.Pointer) {
+		CallFunc(fn, result, args)
+	}, gi.ScopeCall, callableInfo)
+
+	C.g_slist_foreach(v.p(), (*[0]byte)(funcPtr), nil)
+
+	callableInfo.Unref()
+	gi.UnregisterFClosure(cId)
 }
 
 func (v SList) Last() SList {

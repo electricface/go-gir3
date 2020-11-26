@@ -32,8 +32,24 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/electricface/go-gir3/gi"
 	"golang.org/x/xerrors"
 )
+
+func toGiScopeExpr(scopeType gi.ScopeType) string {
+	scope := "gi.ScopeInvalid"
+	switch scopeType {
+	case gi.SCOPE_TYPE_INVALID:
+		scope = "gi.ScopeInvalid"
+	case gi.SCOPE_TYPE_ASYNC:
+		scope = "gi.ScopeAsync"
+	case gi.SCOPE_TYPE_CALL:
+		scope = "gi.ScopeCall"
+	case gi.SCOPE_TYPE_NOTIFIED:
+		scope = "gi.ScopeNotified"
+	}
+	return scope
+}
 
 func strSliceContains(slice []string, str string) bool {
 	for _, v := range slice {

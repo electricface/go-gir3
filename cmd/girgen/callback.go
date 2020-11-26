@@ -33,7 +33,19 @@ func pCallback(s *SourceFile, fi *gi.CallableInfo) {
 	pCallbackFuncDefine(s.GoBody, fi)
 
 	// CallDestroyNotify
+	pCallCallback(s.GoBody, fi)
+}
+
+func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
+	var varReg VarReg
+	varFn := varReg.alloc("fn")
+	varResult := varReg.alloc("result")
+	varArgs := varReg.alloc("args")
+	fiName := fi.Name()
+	b.Pn("func Call%v(%v %v, %v unsafe.Pointer, %v []unsafe.Pointer) {", fiName, varFn, fiName, varResult, varArgs)
 	// TODO
+	b.Pn(" // fn()")
+	b.Pn("}")
 }
 
 func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {

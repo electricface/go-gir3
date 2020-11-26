@@ -168,6 +168,12 @@ func GetFunc(id uint) Closure {
 	return c
 }
 
+func GetCallableInfo(namespace, name string) CallableInfo {
+	// TODO 处理 namespace 的导入 require 问题
+	bi := defaultRepo.FindByName(namespace, name)
+	return WrapCallableInfo(bi.P)
+}
+
 type InvokerCache struct {
 	namespace string
 	mu        sync.RWMutex
