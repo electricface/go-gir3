@@ -1304,6 +1304,7 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 				} else {
 					beforeArgLines = append(beforeArgLines, "_ = "+varCId)
 				}
+				afterCallLines = append(afterCallLines, fmt.Sprintf("%v.Unref()", varCallableInfo))
 
 				//if callbackArgInfo == nil {
 				//	if argInfo.Closure() > 0 {
