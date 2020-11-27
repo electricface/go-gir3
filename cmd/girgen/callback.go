@@ -43,8 +43,39 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 	varArgs := varReg.alloc("args")
 	fiName := fi.Name()
 	b.Pn("func Call%v(%v %v, %v unsafe.Pointer, %v []unsafe.Pointer) {", fiName, varFn, fiName, varResult, varArgs)
-	// TODO
-	b.Pn(" // fn()")
+	b.Pn("if %v == nil {\nreturn\n}", varFn)
+
+	numArgs := fi.NumArg()
+	var fnArgs []string
+	for i := 0; i < numArgs; i++ {
+		argInfo := fi.Arg(i)
+		argTypeInfo := argInfo.Type()
+
+		paramName := varReg.registerParam(i, argInfo.Name())
+		dir := argInfo.Direction()
+		argI := fmt.Sprintf("%v[%v]", varArgs, i)
+		switch dir {
+		case gi.DIRECTION_IN:
+			result := parseCbArgTypeDirIn(paramName, argTypeInfo, argI)
+			if !result.isRet {
+				// $paramName := *(*unsafe.Pointer)($argI)
+				b.Pn("%v := %v", paramName, result.expr)
+				fnArgs = append(fnArgs, paramName)
+			} else {
+				// TODO return value
+			}
+		case gi.DIRECTION_OUT:
+			result := parseCbArgTypeDirOut(paramName, argTypeInfo, argI)
+			b.Pn("%v := %v", paramName, result.expr)
+			b.Pn("_ = %v", paramName)
+		case gi.DIRECTION_INOUT:
+			result := parseCbArgTypeDirInOut(paramName, argTypeInfo, argI)
+			b.Pn("%v := %v", paramName, result.expr)
+			fnArgs = append(fnArgs, paramName)
+		}
+	}
+
+	b.Pn("fn(%v)", strings.Join(fnArgs, ", "))
 	b.Pn("}")
 }
 
@@ -63,17 +94,17 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 		dir := argInfo.Direction()
 		switch dir {
 		case gi.DIRECTION_IN:
-			result := parseCbArgTypeDirIn(paramName, argTypeInfo)
+			result := parseCbArgTypeDirIn(paramName, argTypeInfo, "")
 			if result.isRet {
 				retNameTypes = append(retNameTypes, paramName+" "+result.goType)
 			} else {
 				paramNameTypes = append(paramNameTypes, paramName+" "+result.goType)
 			}
 		case gi.DIRECTION_OUT:
-			result := parseCbArgTypeDirOut(paramName, argTypeInfo)
+			result := parseCbArgTypeDirOut(paramName, argTypeInfo, "")
 			retNameTypes = append(retNameTypes, paramName+" "+result.goType)
 		case gi.DIRECTION_INOUT:
-			result := parseCbArgTypeDirInOut(paramName, argTypeInfo)
+			result := parseCbArgTypeDirInOut(paramName, argTypeInfo, "")
 			paramNameTypes = append(paramNameTypes, paramName+" "+result.goType)
 		}
 	}
@@ -244,19 +275,22 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 type parseCbArgTypeDirInResult struct {
 	goType string
 	isRet  bool
+	expr   string
 }
 
-func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArgTypeDirInResult {
+func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argI string) *parseCbArgTypeDirInResult {
 	isRet := false
 	tag := argTypeInfo.Tag()
 	isPtr := argTypeInfo.IsPointer()
 
 	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("*(*unsafe.Pointer)(%v)", argI)
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		if isPtr {
 			goType = "string"
+			expr = fmt.Sprintf("gi.GoString(%v)", expr)
 		}
 
 	case gi.TYPE_TAG_BOOLEAN,
@@ -271,10 +305,12 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 		} else {
 			goType = "*" + getTypeWithTag(tag)
 		}
+		expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
 
 	case gi.TYPE_TAG_UNICHAR:
 		if !isPtr {
 			goType = "rune"
+			expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
 		}
 
 	case gi.TYPE_TAG_VOID:
@@ -295,15 +331,23 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 				name := getTypeName(ii) // 加上可能的包前缀
 				if ifcType == gi.INFO_TYPE_ENUM {
 					goType = getEnumTypeName(name)
+					expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
 				} else {
 					// flags
 					goType = getFlagsTypeName(name)
+					expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
 				}
 			}
 		} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
 			ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
 			if isPtr {
 				goType = getTypeName(ii)
+				ptrExpr := expr
+				expr = fmt.Sprintf("%v{P: %v}", goType, ptrExpr)
+				if ifcType == gi.INFO_TYPE_OBJECT {
+					expr = fmt.Sprintf("%vWrap%v(%v)",
+						getPkgPrefix(ii.Namespace()), ii.Name(), ptrExpr)
+				}
 			}
 		}
 
@@ -316,6 +360,7 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 			elemType := getArgumentType(elemTypeTag)
 			if elemType != "" && !elemTypeInfo.IsPointer() {
 				goType = "gi." + elemType + "Array"
+				expr = fmt.Sprintf("%v{ P: %v }", goType, expr)
 
 			} else if elemTypeTag == gi.TYPE_TAG_INTERFACE && !elemTypeInfo.IsPointer() {
 				goType = "unsafe.Pointer"
@@ -328,43 +373,53 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArg
 		if isPtr {
 			goType = "error"
 			isRet = true
+			// TODO expr
 		}
 
 	case gi.TYPE_TAG_GTYPE:
 		goType = "gi.GType"
+		expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
 	}
 
 	return &parseCbArgTypeDirInResult{
 		goType: goType,
 		isRet:  isRet,
+		expr:   expr,
 	}
 }
 
 type parseCbArgTypeDirOutResult struct {
 	goType string
+	expr   string
 }
 
-func parseCbArgTypeDirOut(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArgTypeDirOutResult {
+func parseCbArgTypeDirOut(paramName string, argTypeInfo *gi.TypeInfo, argI string) *parseCbArgTypeDirOutResult {
 	tag := argTypeInfo.Tag()
 	isPtr := argTypeInfo.IsPointer()
 
 	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB dir:out tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("*(*unsafe.Pointer)(%v)", argI)
+
 	return &parseCbArgTypeDirOutResult{
 		goType: goType,
+		expr:   expr,
 	}
 }
 
 type parseCbArgTypeDirInOutResult struct {
 	goType string
+	expr   string
 }
 
-func parseCbArgTypeDirInOut(paramName string, argTypeInfo *gi.TypeInfo) *parseCbArgTypeDirInOutResult {
+func parseCbArgTypeDirInOut(paramName string, argTypeInfo *gi.TypeInfo, argI string) *parseCbArgTypeDirInOutResult {
 	tag := argTypeInfo.Tag()
 	isPtr := argTypeInfo.IsPointer()
 
 	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB dir:inout tag: %v, isPtr: %v*/", tag, isPtr)
+	expr := fmt.Sprintf("*(*unsafe.Pointer)(%v)", argI)
 	return &parseCbArgTypeDirInOutResult{
 		goType: goType,
+		expr:   expr,
 	}
 }
 
