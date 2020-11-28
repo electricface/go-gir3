@@ -68,11 +68,13 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 		argI := fmt.Sprintf("%v[%v]", varArgs, i)
 		switch dir {
 		case gi.DIRECTION_IN:
-			result := parseCbArgTypeDirIn(paramName, argTypeInfo, argI)
+			result := parseCbArgTypeDirIn(paramName, argTypeInfo, argInfo, argI, i)
 			if !result.isRet {
 				// $paramName := *(*unsafe.Pointer)($argI)
-				b.Pn("%v := %v", paramName, result.expr)
-				fnArgs = append(fnArgs, paramName)
+				if result.goType != "" {
+					b.Pn("%v := %v", paramName, result.expr)
+					fnArgs = append(fnArgs, paramName)
+				}
 			} else {
 				fnRets = append(fnRets, paramName)
 				afterFnCallLines = append(afterFnCallLines, fmt.Sprintf("_ = %v", paramName))
@@ -129,11 +131,13 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 		dir := argInfo.Direction()
 		switch dir {
 		case gi.DIRECTION_IN:
-			result := parseCbArgTypeDirIn(paramName, argTypeInfo, "")
-			if result.isRet {
-				retNameTypes = append(retNameTypes, paramName+" "+result.goType)
-			} else {
-				paramNameTypes = append(paramNameTypes, paramName+" "+result.goType)
+			result := parseCbArgTypeDirIn(paramName, argTypeInfo, argInfo, "", i)
+			if result.goType != "" {
+				if result.isRet {
+					retNameTypes = append(retNameTypes, paramName+" "+result.goType)
+				} else {
+					paramNameTypes = append(paramNameTypes, paramName+" "+result.goType)
+				}
 			}
 		case gi.DIRECTION_OUT:
 			result := parseCbArgTypeDirOut(paramName, argTypeInfo, "", "")
@@ -320,7 +324,9 @@ type parseCbArgTypeDirInResult struct {
 	expr   string
 }
 
-func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argI string) *parseCbArgTypeDirInResult {
+func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argInfo *gi.ArgInfo, argI string,
+	argIdx int) *parseCbArgTypeDirInResult {
+
 	isRet := false
 	tag := argTypeInfo.Tag()
 	isPtr := argTypeInfo.IsPointer()
@@ -358,6 +364,10 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argI string
 	case gi.TYPE_TAG_VOID:
 		if isPtr {
 			goType = "unsafe.Pointer"
+			if argInfo.Closure() == argIdx {
+				// 说明此参数是用作 closure 的 user_data 的，隐藏它。
+				goType = ""
+			}
 		}
 
 	case gi.TYPE_TAG_INTERFACE:
