@@ -98,6 +98,13 @@ func GetFClosure(id uint) FClosure {
 	return c
 }
 
+func handleClosureDestroy(id unsafe.Pointer) {
+	if id == nil {
+		return
+	}
+	UnregisterFClosure(uint(uintptr(id)))
+}
+
 type Closure struct {
 	Fn    interface{}
 	Scope Scope

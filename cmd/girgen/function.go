@@ -1191,6 +1191,11 @@ type parseArgTypeDirInResult struct {
 	afterCallLines []string // 在 invoker.Call() 之后执行的语句
 }
 
+// 用于处理 closure 的 user_data 参数时，可以使用变量 cId 用的。
+// 这里假设了所有的 closure 的 callback 函数参数都在 user_data 参数前面。
+// 如果不能满足此假设，则会出问题。
+var _varCId string
+
 func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callbackArgInfo *gi.ArgInfo) *parseArgTypeDirInResult {
 	ti := argInfo.Type()
 	defer ti.Unref()
@@ -1244,6 +1249,18 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 			// ti 指的类型就是 void* , 翻译为 unsafe.Pointer
 			type0 = "unsafe.Pointer"
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s)", varArg)
+
+			if callbackArgInfo != nil {
+				// 此参数作为 closure 的 user_data
+				type0 = ""
+
+				if callbackArgInfo.Destroy() > 0 && callbackArgInfo.Scope() == gi.SCOPE_TYPE_NOTIFIED {
+					newArgExpr = fmt.Sprintf("gi.NewPointerArgument(gi.Uint2Ptr(%s))", _varCId)
+					_varCId = ""
+				} else {
+					newArgExpr = fmt.Sprintf("gi.NewPointerArgument(nil)")
+				}
+			}
 		}
 
 	case gi.TYPE_TAG_INTERFACE:
@@ -1280,65 +1297,59 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 				type0 = getEnumTypeName(getTypeName(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_CALLBACK {
-				type0 = getTypeName(bi)
 				biNs := bi.Namespace()
 				biName := bi.Name()
-				scope := argInfo.Scope()
 
-				varCId := varReg.alloc("cId")
-				if scope == gi.SCOPE_TYPE_CALL {
-					beforeArgLines = append(beforeArgLines, fmt.Sprintf("var %v uint", varCId))
+				if callbackArgInfo == nil {
+					type0 = getTypeName(bi)
+					hasDestroy := false
+					if argInfo.Closure() > 0 && argInfo.Destroy() > 0 {
+						// 此参数作为 closure 的 callback。
+						hasDestroy = true
+					}
+					scope := argInfo.Scope()
+					varCId := varReg.alloc("cId")
+					if scope == gi.SCOPE_TYPE_CALL || hasDestroy {
+						beforeArgLines = append(beforeArgLines, fmt.Sprintf("var %v uint", varCId))
+						_varCId = varCId
+					} else {
+						varCId = "_"
+					}
+					varFuncPtr := varReg.alloc("funcPtr")
+					varCallableInfo := varReg.alloc("callableInfo")
+					callFn := getPkgPrefix(biNs) + "Call" + biName
+					beforeArgLines = append(beforeArgLines,
+						fmt.Sprintf("var %v unsafe.Pointer", varFuncPtr),
+						fmt.Sprintf("if %v != nil {", varArg), // begin if
+						fmt.Sprintf("%v := gi.GetCallableInfo(%q, %q)",
+							varCallableInfo, biNs, biName),
+						fmt.Sprintf("%v, %v = gi.RegisterFClosure("+ // 1
+							"func(__result unsafe.Pointer, __args []unsafe.Pointer) {\n"+ // 1
+							"%v(%v, __result, __args)\n"+ // 2
+							" }, %v, %v)", // 3
+							varCId, varFuncPtr, // 第1行
+							callFn, varArg, // 第2行
+							toGiScopeExpr(scope), varCallableInfo), // 第3行
+						fmt.Sprintf("%v.Unref()", varCallableInfo),
+						"}", // end if,
+					)
+
+					newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varFuncPtr)
+
+					if scope == gi.SCOPE_TYPE_CALL {
+						afterCallLines = append(afterCallLines, fmt.Sprintf("gi.UnregisterFClosure(%v)", varCId))
+					}
 				} else {
-					varCId = "_"
+					// 此参数作为 closure 的 destroy notify。
+					type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
+					newArgExpr = "gi.NewPointerArgument(gi.GetClosureDestroyNotifyPtr())"
+					if !(biNs == "GLib" && biName == "DestroyNotify") {
+						afterCallLines = append(afterCallLines,
+							fmt.Sprintf("// WARN: type of this arg is not GLib.DestroyNotify, varArg: %v, "+
+								"bi is %v.%v",
+								varArg, biNs, biName))
+					}
 				}
-				varFuncPtr := varReg.alloc("funcPtr")
-				varCallableInfo := varReg.alloc("callableInfo")
-				callFn := getPkgPrefix(biNs) + "Call" + biName
-				beforeArgLines = append(beforeArgLines,
-					fmt.Sprintf("var %v unsafe.Pointer", varFuncPtr),
-					fmt.Sprintf("if %v != nil {", varArg), // begin if
-					fmt.Sprintf("%v := gi.GetCallableInfo(%q, %q)",
-						varCallableInfo, biNs, biName),
-					fmt.Sprintf("%v, %v = gi.RegisterFClosure("+ // 1
-						"func(__result unsafe.Pointer, __args []unsafe.Pointer) {\n"+ // 1
-						"%v(%v, __result, __args)\n"+ // 2
-						" }, %v, %v)", // 3
-						varCId, varFuncPtr, // 第1行
-						callFn, varArg, // 第2行
-						toGiScopeExpr(scope), varCallableInfo), // 第3行
-					fmt.Sprintf("%v.Unref()", varCallableInfo),
-					"}", // end if,
-				)
-
-				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varFuncPtr)
-
-				if scope == gi.SCOPE_TYPE_CALL {
-					afterCallLines = append(afterCallLines, fmt.Sprintf("gi.UnregisterFClosure(%v)", varCId))
-				}
-
-				//if callbackArgInfo == nil {
-				//	if argInfo.Closure() > 0 {
-				//		// 此参数作为 closure 的 callback，自动填。
-				//		type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
-				//		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
-				//			getPkgPrefix(biNs), biName)
-				//	} else {
-				//		// 此参数不是 closure 的 callback
-				//		type0 = "unsafe.Pointer"
-				//		newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varArg)
-				//	}
-				//} else {
-				//	// 此参数作为 closure 的 destroy notify。
-				//	type0 = "" // 隐藏此参数，不出现在目标函数的参数列表中
-				//	newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%vGet%vWrapper())",
-				//		getPkgPrefix(biNs), biName)
-				//	if !(biNs == "GLib" && biName == "DestroyNotify") {
-				//		afterCallLines = append(afterCallLines,
-				//			fmt.Sprintf("// WARN: type of this arg is not GLib.DestroyNotify, varArg: %v, "+
-				//				"realParamName: %v, bi is %v.%v",
-				//				varArg, realParamName, biNs, biName))
-				//	}
-				//}
 
 			} else if biType == gi.INFO_TYPE_UNRESOLVED {
 				// 如果发现此种未解析的类型，应该使用黑名单屏蔽。

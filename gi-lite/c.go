@@ -53,6 +53,10 @@ extern void goGiClosureHandle (ffi_cif *cif,
                      void   **args,
                      void    *data);
 
+extern void giClosureDestroyNotify(gpointer data);
+static void* getGiClosureDestroyNotifyPtr() {
+    return (void*)(giClosureDestroyNotify);
+}
 
 static void call_my_destroy_fn(void* ptr) {
 	GDestroyNotify d = ptr;
@@ -66,6 +70,15 @@ import (
 	"errors"
 	"unsafe"
 )
+
+func GetClosureDestroyNotifyPtr() unsafe.Pointer {
+	return unsafe.Pointer(C.getGiClosureDestroyNotifyPtr())
+}
+
+//export giClosureDestroyNotify
+func giClosureDestroyNotify(data C.gpointer) {
+	handleClosureDestroy(unsafe.Pointer(data))
+}
 
 //export goGiClosureHandle
 func goGiClosureHandle(cif *C.ffi_cif, result unsafe.Pointer, args *unsafe.Pointer, userData unsafe.Pointer) {
