@@ -52,11 +52,11 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 	var fnRets []string
 
 	retType := fi.ReturnType()
-	retResult := parseCbRet(varResult, retType)
 	varFnRet := varReg.alloc("fnRet")
+	retResult := parseCbRet(varResult, varFnRet, retType)
 	if retResult.goType != "" {
 		fnRets = append(fnRets, varFnRet)
-		afterFnCallLines = append(afterFnCallLines, fmt.Sprintf("_ = %v", varFnRet))
+		afterFnCallLines = append(afterFnCallLines, retResult.assignLine)
 	}
 
 	for i := 0; i < numArgs; i++ {
@@ -115,7 +115,7 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 	retType := fi.ReturnType()
 	defer retType.Unref()
 	varResult := varReg.alloc("result")
-	retResult := parseCbRet(varResult, retType)
+	retResult := parseCbRet(varResult, "", retType)
 	if retResult.goType != "" {
 		retNameTypes = append(retNameTypes, varResult+" "+retResult.goType)
 	}
@@ -153,13 +153,18 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 }
 
 type parseCbRetResult struct {
-	goType string
+	goType     string
+	assignLine string
 }
 
-func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
+func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseCbRetResult {
 	tag := retType.Tag()
 	isPtr := retType.IsPointer()
 	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB ret tag: %v, isPtr: %v*/", tag, isPtr)
+	assignLine := fmt.Sprintf("_ = %v // TODO assignLine", varFnRet)
+	getDefaultAssignLine := func() string {
+		return fmt.Sprintf("*(*%v)(%v) = %v", goType, varResult, varFnRet)
+	}
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -167,8 +172,7 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 			goType = "string"
 		}
 
-	case gi.TYPE_TAG_BOOLEAN,
-		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+	case gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
 		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
 		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
 		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
@@ -176,18 +180,25 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 		// 简单类型
 		if !isPtr {
 			goType = getTypeWithTag(tag)
-		} else {
-			goType = "*" + getTypeWithTag(tag)
+			assignLine = getDefaultAssignLine()
+		}
+
+	case gi.TYPE_TAG_BOOLEAN:
+		if !isPtr {
+			goType = "bool"
+			assignLine = fmt.Sprintf("*(*int32)(%v) = int32(gi.Bool2Int(%v))", varResult, varFnRet)
 		}
 
 	case gi.TYPE_TAG_UNICHAR:
 		if !isPtr {
 			goType = "rune"
+			assignLine = getDefaultAssignLine()
 		}
 
 	case gi.TYPE_TAG_VOID:
 		if isPtr {
 			goType = "unsafe.Pointer"
+			assignLine = getDefaultAssignLine()
 		} else {
 			goType = ""
 		}
@@ -197,6 +208,7 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 			goType = "*gi.GType"
 		} else {
 			goType = "gi.GType"
+			assignLine = getDefaultAssignLine()
 		}
 
 	case gi.TYPE_TAG_INTERFACE:
@@ -216,12 +228,13 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 					// flags
 					goType = getFlagsTypeName(name)
 				}
-				goType = ""
+				assignLine = getDefaultAssignLine()
 			}
 		} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
 			ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
 			if isPtr {
 				goType = getTypeName(ii)
+				assignLine = fmt.Sprintf("*(*unsafe.Pointer)(%v) = %v.P", varResult, varFnRet)
 			}
 		}
 
@@ -295,7 +308,8 @@ func parseCbRet(varResult string, retType *gi.TypeInfo) *parseCbRetResult {
 	}
 
 	return &parseCbRetResult{
-		goType: goType,
+		goType:     goType,
+		assignLine: assignLine,
 	}
 }
 
