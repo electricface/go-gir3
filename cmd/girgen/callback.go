@@ -170,6 +170,7 @@ func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseC
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
 		if isPtr {
 			goType = "string"
+			assignLine = fmt.Sprintf("*(*unsafe.Pointer)(%v) = gi.CString(%v)", varResult, varFnRet)
 		}
 
 	case gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
