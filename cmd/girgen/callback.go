@@ -45,8 +45,20 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 	b.Pn("func Call%v(%v %v, %v unsafe.Pointer, %v []unsafe.Pointer) {", fiName, varFn, fiName, varResult, varArgs)
 	b.Pn("if %v == nil {\nreturn\n}", varFn)
 
+	var afterFnCallLines []string
+
 	numArgs := fi.NumArg()
 	var fnArgs []string
+	var fnRets []string
+
+	retType := fi.ReturnType()
+	retResult := parseCbRet(varResult, retType)
+	varFnRet := varReg.alloc("fnRet")
+	if retResult.goType != "" {
+		fnRets = append(fnRets, varFnRet)
+		afterFnCallLines = append(afterFnCallLines, fmt.Sprintf("_ = %v", varFnRet))
+	}
+
 	for i := 0; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
 		argTypeInfo := argInfo.Type()
@@ -62,12 +74,16 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 				b.Pn("%v := %v", paramName, result.expr)
 				fnArgs = append(fnArgs, paramName)
 			} else {
-				// TODO return value
+				fnRets = append(fnRets, paramName)
+				afterFnCallLines = append(afterFnCallLines, fmt.Sprintf("_ = %v", paramName))
 			}
 		case gi.DIRECTION_OUT:
-			result := parseCbArgTypeDirOut(paramName, argTypeInfo, argI)
+			varFnRetOther := varReg.alloc("fn_ret_" + paramName)
+			result := parseCbArgTypeDirOut(paramName, argTypeInfo, argI, varFnRetOther)
 			b.Pn("%v := %v", paramName, result.expr)
-			b.Pn("_ = %v", paramName)
+			fnRets = append(fnRets, varFnRetOther)
+			afterFnCallLines = append(afterFnCallLines, fmt.Sprintf("*%v = %v", paramName, result.assignExpr))
+
 		case gi.DIRECTION_INOUT:
 			result := parseCbArgTypeDirInOut(paramName, argTypeInfo, argI)
 			b.Pn("%v := %v", paramName, result.expr)
@@ -75,7 +91,17 @@ func pCallCallback(b *SourceBody, fi *gi.CallableInfo) {
 		}
 	}
 
-	b.Pn("fn(%v)", strings.Join(fnArgs, ", "))
+	prefix := ""
+	if len(fnRets) > 0 {
+		prefix = fmt.Sprintf("%v := ", strings.Join(fnRets, ", "))
+	}
+
+	b.Pn("%vfn(%v)", prefix, strings.Join(fnArgs, ", "))
+
+	for _, line := range afterFnCallLines {
+		b.Pn(line)
+	}
+
 	b.Pn("}")
 }
 
@@ -85,6 +111,15 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 	var paramNameTypes []string
 	var retNameTypes []string
 	var varReg VarReg
+
+	retType := fi.ReturnType()
+	defer retType.Unref()
+	varResult := varReg.alloc("result")
+	retResult := parseCbRet(varResult, retType)
+	if retResult.goType != "" {
+		retNameTypes = append(retNameTypes, varResult+" "+retResult.goType)
+	}
+
 	numArgs := fi.NumArg()
 	for i := 0; i < numArgs; i++ {
 		argInfo := fi.Arg(i)
@@ -101,7 +136,7 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 				paramNameTypes = append(paramNameTypes, paramName+" "+result.goType)
 			}
 		case gi.DIRECTION_OUT:
-			result := parseCbArgTypeDirOut(paramName, argTypeInfo, "")
+			result := parseCbArgTypeDirOut(paramName, argTypeInfo, "", "")
 			retNameTypes = append(retNameTypes, paramName+" "+result.goType)
 		case gi.DIRECTION_INOUT:
 			result := parseCbArgTypeDirInOut(paramName, argTypeInfo, "")
@@ -109,20 +144,12 @@ func pCallbackFuncDefine(b *SourceBody, fi *gi.CallableInfo) {
 		}
 	}
 
-	retType := fi.ReturnType()
-	defer retType.Unref()
-	varResult := varReg.alloc("result")
-	retResult := parseCbRet(varResult, retType)
-	if retResult.goType != "" {
-		retNameTypes = append(retNameTypes, varResult+" "+retResult.goType)
-	}
-
-	args := strings.Join(paramNameTypes, ", ")
-	result := ""
+	argsPart := strings.Join(paramNameTypes, ", ")
+	retPart := ""
 	if len(retNameTypes) > 0 {
-		result = "(" + strings.Join(retNameTypes, ", ") + ")"
+		retPart = "(" + strings.Join(retNameTypes, ", ") + ")"
 	}
-	b.Pn("type %v func(%v) %v", name, args, result)
+	b.Pn("type %v func(%v) %v", name, argsPart, retPart)
 }
 
 type parseCbRetResult struct {
@@ -389,20 +416,53 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argI string
 }
 
 type parseCbArgTypeDirOutResult struct {
-	goType string
-	expr   string
+	goType     string
+	expr       string
+	assignExpr string
 }
 
-func parseCbArgTypeDirOut(paramName string, argTypeInfo *gi.TypeInfo, argI string) *parseCbArgTypeDirOutResult {
+func parseCbArgTypeDirOut(paramName string, argTypeInfo *gi.TypeInfo, argI, varFnRetOther string) *parseCbArgTypeDirOutResult {
 	tag := argTypeInfo.Tag()
 	isPtr := argTypeInfo.IsPointer()
 
+	// 回调函数返回值的类型
 	goType := "unsafe.Pointer" + fmt.Sprintf("/*TODO_CB dir:out tag: %v, isPtr: %v*/", tag, isPtr)
-	expr := fmt.Sprintf("*(*unsafe.Pointer)(%v)", argI)
+
+	// 处理 args[i] 的表达式, 表达式求值后的类型是 goType 的指针。
+	// args[i] 是第 i 个参数的指针
+	// 比如 expr 为 *(**unsafe.Pointer)(args[i])  时，它的类型是 *unsafe.Pointer ，是 goType (为unsafe.Pointer) 的指针。
+	expr := fmt.Sprintf("*(**unsafe.Pointer)(%v)", argI)
+	assignExpr := varFnRetOther
+
+	switch tag {
+	case gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
+		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
+		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
+		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
+		if !isPtr {
+			goType = getTypeWithTag(tag)
+			expr = fmt.Sprintf("*(**%v)(%v)", goType, argI)
+		}
+
+	case gi.TYPE_TAG_BOOLEAN:
+		if !isPtr {
+			goType = "bool"
+			expr = fmt.Sprintf("*(**int32)(%v)", argI)
+			assignExpr = fmt.Sprintf("int32(gi.Bool2Int(%v))", varFnRetOther)
+		}
+
+	case gi.TYPE_TAG_VOID:
+		if isPtr {
+			goType = "unsafe.Pointer"
+			expr = fmt.Sprintf("*(**unsafe.Pointer)(%v)", argI)
+		}
+	}
 
 	return &parseCbArgTypeDirOutResult{
-		goType: goType,
-		expr:   expr,
+		goType:     goType,
+		expr:       expr,
+		assignExpr: assignExpr,
 	}
 }
 

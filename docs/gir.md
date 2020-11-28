@@ -20,7 +20,7 @@ go mainLoop.Run()
 | guchar / unsigned char  | 1    | 1    | byte / uint8             |
 | gshort /short           | 2    | 2    | int16                    |
 | gushort /unsigned short | 2    | 2    | uint16                   |
-| gint / int              | 4    | 4    | int32                    |
+| gint / gboolean / int   | 4    | 4    | int32                    |
 | guint / uint            | 4    | 4    | uint32                   |
 | glong / long            | 4    | 8    | int                      |
 | gulong / unsigned long  | 4    | 8    | uint                     |
