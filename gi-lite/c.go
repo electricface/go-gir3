@@ -208,6 +208,10 @@ func (bi BaseInfo) p() *C.GIBaseInfo {
 	return (*C.GIBaseInfo)(bi.P)
 }
 
+func (bi BaseInfo) Ref() {
+	C.g_base_info_ref(bi.p())
+}
+
 func (bi BaseInfo) Unref() {
 	C.g_base_info_unref(bi.p())
 }

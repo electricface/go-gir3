@@ -1284,27 +1284,36 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 				biNs := bi.Namespace()
 				biName := bi.Name()
 				scope := argInfo.Scope()
-				varCallableInfo := varReg.alloc("callableInfo")
-				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v := gi.GetCallableInfo(%q, %q)",
-					varCallableInfo, biNs, biName))
 				varFuncPtr := varReg.alloc("funcPtr")
 				varCId := varReg.alloc("cId")
 				callFn := getPkgPrefix(biNs) + "Call" + biName
-				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v, %v := gi.RegisterFClosure("+ // 1
+
+				if scope == gi.SCOPE_TYPE_CALL {
+					beforeArgLines = append(beforeArgLines, fmt.Sprintf("var %v uint", varCId))
+				} else {
+					varCId = "_"
+				}
+
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("var %v unsafe.Pointer", varFuncPtr))
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("if %v != nil {", varArg)) // begin if
+				varCallableInfo := varReg.alloc("callableInfo")
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v := gi.GetCallableInfo(%q, %q)",
+					varCallableInfo, biNs, biName))
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v, %v = gi.RegisterFClosure("+ // 1
 					"func(__result unsafe.Pointer, __args []unsafe.Pointer) {\n"+ // 1
 					"%v(%v, __result, __args)\n"+ // 2
 					" }, %v, %v)", // 3
 					varCId, varFuncPtr, // 第1行
 					callFn, varArg, // 第2行
 					toGiScopeExpr(scope), varCallableInfo)) // 第3行
+				beforeArgLines = append(beforeArgLines, fmt.Sprintf("%v.Unref()", varCallableInfo))
+				beforeArgLines = append(beforeArgLines, "}") // end if
+
 				newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%v)", varFuncPtr)
 
 				if scope == gi.SCOPE_TYPE_CALL {
 					afterCallLines = append(afterCallLines, fmt.Sprintf("gi.UnregisterFClosure(%v)", varCId))
-				} else {
-					beforeArgLines = append(beforeArgLines, "_ = "+varCId)
 				}
-				afterCallLines = append(afterCallLines, fmt.Sprintf("%v.Unref()", varCallableInfo))
 
 				//if callbackArgInfo == nil {
 				//	if argInfo.Closure() > 0 {
