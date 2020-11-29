@@ -271,7 +271,7 @@ func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
 	// f returns false.  The error is ignored here, as this will
 	// always be a function.
 	f := func() interface{} {
-		return fn(nil)
+		return fn()
 	}
 	closure := ClosureNew(f)
 
@@ -461,9 +461,19 @@ func (v List) Next() List {
 	return wrapList(native.next)
 }
 
+func (v List) SetNext(next List) {
+	native := v.p()
+	native.next = next.p()
+}
+
 func (v List) Previous() List {
 	native := v.p()
 	return wrapList(native.prev)
+}
+
+func (v List) SetPrevious(prev List) {
+	native := v.p()
+	native.prev = prev.p()
 }
 
 // Free 释放所有被 List 使用的内存。如果列表的元素包含动态分配的内存，
@@ -495,6 +505,11 @@ func (v List) RemoveLink(lLink List) List {
 func (v List) Data() unsafe.Pointer {
 	native := v.p()
 	return unsafe.Pointer(native.data)
+}
+
+func (v List) SetData(data unsafe.Pointer) {
+	native := v.p()
+	native.data = C.gpointer(data)
 }
 
 func (v List) Length() int {
@@ -661,9 +676,24 @@ func (v SList) Last() SList {
 	return wrapSList(list)
 }
 
+func (v SList) Data() unsafe.Pointer {
+	native := v.p()
+	return unsafe.Pointer(native.data)
+}
+
+func (v SList) SetData(data unsafe.Pointer) {
+	native := v.p()
+	native.data = C.gpointer(data)
+}
+
 func (v SList) Next() SList {
 	native := v.p()
 	return wrapSList(native.next)
+}
+
+func (v SList) SetNext(next SList) {
+	native := v.p()
+	native.next = next.p()
 }
 
 func (v SList) Nth(n uint) SList {
