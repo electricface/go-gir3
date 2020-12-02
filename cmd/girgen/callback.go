@@ -226,7 +226,7 @@ func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseC
 
 		if ifcType == gi.INFO_TYPE_ENUM || ifcType == gi.INFO_TYPE_FLAGS {
 			if !isPtr {
-				name := getTypeName(ii) // 加上可能的包前缀
+				name := getTypeNameWithBaseInfo(ii) // 加上可能的包前缀
 				if ifcType == gi.INFO_TYPE_ENUM {
 					goType = getEnumTypeName(name)
 				} else {
@@ -238,7 +238,7 @@ func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseC
 		} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
 			ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
 			if isPtr {
-				goType = getTypeName(ii)
+				goType = getTypeNameWithBaseInfo(ii)
 				assignLine = fmt.Sprintf("*(*unsafe.Pointer)(%v) = %v.P", varResult, varFnRet)
 			}
 		}
@@ -252,7 +252,7 @@ func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseC
 		//		cType = identPrefix + name
 		//		cgoType = "C." + cType
 		//
-		//		name = getTypeName(ii) // 加上可能的包前缀
+		//		name = getTypeNameWithBaseInfo(ii) // 加上可能的包前缀
 		//		if ifcType == gi.INFO_TYPE_ENUM {
 		//			goType = getEnumTypeName(name)
 		//		} else {
@@ -276,7 +276,7 @@ func parseCbRet(varResult string, varFnRet string, retType *gi.TypeInfo) *parseC
 		//		cType = identPrefix + name + "*"
 		//		cgoType = "*C." + identPrefix + name
 		//
-		//		goType = getTypeName(ii)
+		//		goType = getTypeNameWithBaseInfo(ii)
 		//		expr = fmt.Sprintf("%v{P: unsafe.Pointer(%v) }", goType, paramName)
 		//		if ifcType == gi.INFO_TYPE_OBJECT {
 		//			expr = fmt.Sprintf("%vWrap%v(unsafe.Pointer(%v))",
@@ -380,7 +380,7 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argInfo *gi
 
 		if ifcType == gi.INFO_TYPE_ENUM || ifcType == gi.INFO_TYPE_FLAGS {
 			if !isPtr {
-				name := getTypeName(ii) // 加上可能的包前缀
+				name := getTypeNameWithBaseInfo(ii) // 加上可能的包前缀
 				if ifcType == gi.INFO_TYPE_ENUM {
 					goType = getEnumTypeName(name)
 					expr = fmt.Sprintf("*(*%v)(%v)", goType, argI)
@@ -393,7 +393,7 @@ func parseCbArgTypeDirIn(paramName string, argTypeInfo *gi.TypeInfo, argInfo *gi
 		} else if ifcType == gi.INFO_TYPE_STRUCT || ifcType == gi.INFO_TYPE_UNION ||
 			ifcType == gi.INFO_TYPE_OBJECT || ifcType == gi.INFO_TYPE_INTERFACE {
 			if isPtr {
-				goType = getTypeName(ii)
+				goType = getTypeNameWithBaseInfo(ii)
 				ptrExpr := expr
 				expr = fmt.Sprintf("%v{P: %v}", goType, ptrExpr)
 				if ifcType == gi.INFO_TYPE_OBJECT {
@@ -734,7 +734,7 @@ func parseCbRet1(retType *gi.TypeInfo, varResult string) *parseCbRetResult1 {
 		//		cType = identPrefix + name
 		//		cgoType = "C." + cType
 		//
-		//		name = getTypeName(ii) // 加上可能的包前缀
+		//		name = getTypeNameWithBaseInfo(ii) // 加上可能的包前缀
 		//		if ifcType == gi.INFO_TYPE_ENUM {
 		//			goType = getEnumTypeName(name)
 		//		} else {
@@ -758,7 +758,7 @@ func parseCbRet1(retType *gi.TypeInfo, varResult string) *parseCbRetResult1 {
 		//		cType = identPrefix + name + "*"
 		//		cgoType = "*C." + identPrefix + name
 		//
-		//		goType = getTypeName(ii)
+		//		goType = getTypeNameWithBaseInfo(ii)
 		//		expr = fmt.Sprintf("%v{P: unsafe.Pointer(%v) }", goType, paramName)
 		//		if ifcType == gi.INFO_TYPE_OBJECT {
 		//			expr = fmt.Sprintf("%vWrap%v(unsafe.Pointer(%v))",
@@ -928,7 +928,7 @@ func parseCbArgTypeDirIn1(paramName string, argTypeInfo *gi.TypeInfo) *parseCbAr
 				cType = identPrefix + name
 				cgoType = "C." + cType
 
-				name = getTypeName(ii) // 加上可能的包前缀
+				name = getTypeNameWithBaseInfo(ii) // 加上可能的包前缀
 				if ifcType == gi.INFO_TYPE_ENUM {
 					goType = getEnumTypeName(name)
 				} else {
@@ -952,7 +952,7 @@ func parseCbArgTypeDirIn1(paramName string, argTypeInfo *gi.TypeInfo) *parseCbAr
 				cType = identPrefix + name + "*"
 				cgoType = "*C." + identPrefix + name
 
-				goType = getTypeName(ii)
+				goType = getTypeNameWithBaseInfo(ii)
 				expr = fmt.Sprintf("%v{P: unsafe.Pointer(%v) }", goType, paramName)
 				if ifcType == gi.INFO_TYPE_OBJECT {
 					expr = fmt.Sprintf("%vWrap%v(unsafe.Pointer(%v))",

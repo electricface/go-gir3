@@ -61,6 +61,10 @@ gudev-1.0:
 	./girgen -n GUdev -v 1.0
 	# libgudev-1.0-dev gir1.2-gudev-1.0
 
+nm-1.0:
+	./girgen -n NM -v 1.0
+	# libnm-dev gir1.2-nm-1.0
+
 atk-1.0:
 	./girgen -n Atk -v 1.0
 	# libatk1.0-dev gir1.2-atk-1.0

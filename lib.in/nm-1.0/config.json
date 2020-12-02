@@ -1,0 +1,6 @@
+{
+    "DeniedFuncs": ["Setting.GetSecretFlags", "Setting8021x.SetPhase2CaCert",
+    "Setting8021x.SetCaCert", "Setting8021x.SetClientCert",
+    "Setting8021x.SetPhase2ClientCert", "Setting8021x.SetPhase2PrivateKey",
+    "Setting8021x.SetPrivateKey"]
+}

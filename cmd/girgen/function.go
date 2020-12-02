@@ -26,6 +26,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/electricface/go-gir3/gi"
 )
@@ -691,12 +692,12 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 		bi := ti.Interface()
 		biType := bi.Type()
 		if isPtr {
-			type0 = getTypeName(bi)
+			type0 = getTypeNameWithBaseInfo(bi)
 
 			if fiFlags&gi.FUNCTION_IS_CONSTRUCTOR != 0 {
 				container := fi.Container()
 				if container != nil {
-					type0 = getTypeName(container)
+					type0 = getTypeNameWithBaseInfo(container)
 					container.Unref()
 				}
 			}
@@ -706,10 +707,10 @@ func parseRetType(varRet string, ti *gi.TypeInfo, varReg *VarReg, fi *gi.Functio
 
 		} else {
 			if biType == gi.INFO_TYPE_FLAGS {
-				type0 = getFlagsTypeName(getTypeName(bi))
+				type0 = getFlagsTypeName(getTypeNameWithBaseInfo(bi))
 				expr = fmt.Sprintf("%v(%v.Int())", type0, varRet)
 			} else if biType == gi.INFO_TYPE_ENUM {
-				type0 = getEnumTypeName(getTypeName(bi))
+				type0 = getEnumTypeName(getTypeNameWithBaseInfo(bi))
 				expr = fmt.Sprintf("%v(%v.Int())", type0, varRet)
 			}
 		}
@@ -933,7 +934,7 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 			if biType == gi.INFO_TYPE_OBJECT || biType == gi.INFO_TYPE_INTERFACE ||
 				biType == gi.INFO_TYPE_STRUCT {
 
-				type0 = getTypeName(bi)
+				type0 = getTypeNameWithBaseInfo(bi)
 				expr = "Pointer()"
 				field = ".P"
 			} else {
@@ -944,20 +945,20 @@ func parseArgTypeDirOut(paramName string, ti *gi.TypeInfo, varReg *VarReg,
 
 		} else {
 			if biType == gi.INFO_TYPE_FLAGS {
-				type0 = getFlagsTypeName(getTypeName(bi))
+				type0 = getFlagsTypeName(getTypeNameWithBaseInfo(bi))
 				expr = "Int()"
 				needTypeCast = true
 			} else if biType == gi.INFO_TYPE_ENUM {
-				type0 = getEnumTypeName(getTypeName(bi))
+				type0 = getEnumTypeName(getTypeNameWithBaseInfo(bi))
 				expr = "Int()"
 				needTypeCast = true
 			} else if biType == gi.INFO_TYPE_STRUCT {
 				if isCallerAlloc {
 					isRet = false
-					type0 = getTypeName(bi)
+					type0 = getTypeNameWithBaseInfo(bi)
 					expr = paramName + ".P"
 				} else {
-					type0 = getTypeName(bi)
+					type0 = getTypeNameWithBaseInfo(bi)
 					field = ".P"
 					expr = "Pointer()"
 				}
@@ -1267,7 +1268,7 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 		bi := ti.Interface()
 		biType := bi.Type()
 		if isPtr {
-			type0 = getTypeName(bi)
+			type0 = getTypeNameWithBaseInfo(bi)
 			newArgExpr = fmt.Sprintf("gi.NewPointerArgument(%s.P)", varArg)
 
 			biType := bi.Type()
@@ -1291,17 +1292,17 @@ func parseArgTypeDirIn(varArg string, argInfo *gi.ArgInfo, varReg *VarReg, callb
 			type0 = fmt.Sprintf("int/*TODO_TYPE %s*/", debugMsg)
 
 			if biType == gi.INFO_TYPE_FLAGS {
-				type0 = getFlagsTypeName(getTypeName(bi))
+				type0 = getFlagsTypeName(getTypeNameWithBaseInfo(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_ENUM {
-				type0 = getEnumTypeName(getTypeName(bi))
+				type0 = getEnumTypeName(getTypeNameWithBaseInfo(bi))
 				newArgExpr = fmt.Sprintf("gi.NewIntArgument(int(%v))", varArg)
 			} else if biType == gi.INFO_TYPE_CALLBACK {
 				biNs := bi.Namespace()
 				biName := bi.Name()
 
 				if callbackArgInfo == nil {
-					type0 = getTypeName(bi)
+					type0 = getTypeNameWithBaseInfo(bi)
 					hasDestroy := false
 					if argInfo.Closure() > 0 && argInfo.Destroy() > 0 {
 						// 此参数作为 closure 的 callback。
@@ -1445,9 +1446,18 @@ func isSameNamespace(ns string) bool {
 	return false
 }
 
-func getTypeName(bi *gi.BaseInfo) string {
+func getTypeNameWithBaseInfo(bi *gi.BaseInfo) string {
 	pkgPrefix := getPkgPrefix(bi.Namespace())
-	return pkgPrefix + bi.Name()
+	name := getTypeName(bi.Name())
+	return pkgPrefix + name
+}
+
+func getTypeName(name string) string {
+	if !unicode.IsLetter(rune(name[0])) {
+		// 如果第一个字符不是单词，则加上命名空间前缀
+		name = _optNamespace + name
+	}
+	return name
 }
 
 // 根据命名空间 ns （不含版本）获取Go语言包的前缀，比如 ns 为 Gtk， 结果为 "gtk."。

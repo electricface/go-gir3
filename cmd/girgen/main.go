@@ -435,7 +435,7 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 	if ei.IsDeprecated() {
 		markDeprecated(s)
 	}
-	name := ei.Name()
+	name := getTypeName(ei.Name())
 	var type0 string
 	if isEnum {
 		s.GoBody.Pn("// Enum %v", name)
@@ -462,7 +462,7 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 	s.GoBody.Pn(")") // end const
 
 	// NOTE: enum 和 flags 也有类型的
-	pGetTypeFunc(s, name)
+	pGetTypeFunc(s, name, ei.Name())
 }
 
 func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
@@ -505,7 +505,7 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 		s.GoBody.Pn("const SizeOfStruct%v = %v", name, size)
 	}
 
-	pGetTypeFunc(s, name)
+	pGetTypeFunc(s, name, "")
 
 	for idxLv2 := 0; idxLv2 < numMethods; idxLv2++ {
 		fi := si.Method(idxLv2)
@@ -516,7 +516,10 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 // 给 XXXGetType 用的 id
 var _getTypeNextId int
 
-func pGetTypeFunc(s *SourceFile, name string) {
+func pGetTypeFunc(s *SourceFile, name, realName string) {
+	if realName == "" {
+		realName = name
+	}
 	if strSliceContains(_cfg.NoGetType, name) {
 		s.GoBody.Pn("// noGetType %s\n", name)
 		_getTypeNextId++
@@ -526,9 +529,9 @@ func pGetTypeFunc(s *SourceFile, name string) {
 	s.GoBody.Pn("func %sGetType() gi.GType {", name)
 
 	if _optNamespace == "GObject" || _optNamespace == "Gio" {
-		s.GoBody.Pn("ret := _I.GetGType1(%v, %q, %q)", _getTypeNextId, _optNamespace, name)
+		s.GoBody.Pn("ret := _I.GetGType1(%v, %q, %q)", _getTypeNextId, _optNamespace, realName)
 	} else {
-		s.GoBody.Pn("ret := _I.GetGType(%v, %q)", _getTypeNextId, name)
+		s.GoBody.Pn("ret := _I.GetGType(%v, %q)", _getTypeNextId, realName)
 	}
 
 	s.GoBody.Pn("return ret")
@@ -551,7 +554,7 @@ func pUnion(s *SourceFile, ui *gi.UnionInfo, idxLv1 int) {
 		s.GoBody.Pn("const SizeOfUnion%v = %v", name, size)
 	}
 
-	pGetTypeFunc(s, name)
+	pGetTypeFunc(s, name, "")
 
 	numMethod := ui.NumMethod()
 	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
@@ -577,7 +580,7 @@ func pInterface(s *SourceFile, ii *gi.InterfaceInfo, idxLv1 int) {
 	s.GoBody.Pn("P_%s() unsafe.Pointer }", name)
 	s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, name)
 
-	pGetTypeFunc(s, name)
+	pGetTypeFunc(s, name, "")
 
 	numMethod := ii.NumMethod()
 	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
@@ -629,7 +632,7 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo, idxLv1 int) {
 
 		// 如果父类型没有实现此接口，才嵌入它
 		if !isParentImplIfc(oi, ii) {
-			typeName := getTypeName(gi.ToBaseInfo(ii))
+			typeName := getTypeNameWithBaseInfo(gi.ToBaseInfo(ii))
 			s.GoBody.Pn("%sIfc", typeName)
 			embeddedIfcs = append(embeddedIfcs, ii.Name())
 		}
@@ -640,7 +643,7 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo, idxLv1 int) {
 	// object 继承关系
 	parent := oi.Parent()
 	if parent != nil {
-		parentTypeName := getTypeName(gi.ToBaseInfo(parent))
+		parentTypeName := getTypeNameWithBaseInfo(gi.ToBaseInfo(parent))
 		s.GoBody.Pn("%s", parentTypeName)
 		parent.Unref()
 	} else {
@@ -661,7 +664,7 @@ func pObject(s *SourceFile, oi *gi.ObjectInfo, idxLv1 int) {
 		s.GoBody.Pn("func (v %s) P_%s() unsafe.Pointer { return v.P }", name, ifc)
 	}
 
-	pGetTypeFunc(s, name)
+	pGetTypeFunc(s, name, "")
 
 	numMethod := oi.NumMethod()
 	for idxLv2 := 0; idxLv2 < numMethod; idxLv2++ {
