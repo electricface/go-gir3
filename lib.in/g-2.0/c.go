@@ -74,7 +74,8 @@ const (
 )
 
 type closureContext struct {
-	rf reflect.Value
+	fn       interface{}
+	userData interface{}
 }
 
 var (
@@ -113,15 +114,15 @@ func goMarshal(closure *C.GClosure, retValue *C.GValue,
 	cc := _closures.m[unsafe.Pointer(closure)]
 	_closures.RUnlock()
 
-	var args []interface{}
+	var paramsIfc []interface{}
 	nGLibParams := int(nParams)
 	if nGLibParams > 0 {
-		args = make([]interface{}, nGLibParams)
+		paramsIfc = make([]interface{}, nGLibParams)
 		gValues := gValueSlice(params, nGLibParams)
 		for i := 0; i < nGLibParams; i++ {
-			v := Value{unsafe.Pointer(&gValues[i])}
+			v := Value{P: unsafe.Pointer(&gValues[i])}
 			val, _ := v.Get()
-			args[i] = val
+			paramsIfc[i] = val
 		}
 	}
 
@@ -133,7 +134,7 @@ func goMarshal(closure *C.GClosure, retValue *C.GValue,
 		}
 	}()
 
-	switch fn := cc.rf.Interface().(type) {
+	switch fn := cc.fn.(type) {
 	case func():
 		// 无参数，无返回值
 		fn()
@@ -145,19 +146,18 @@ func goMarshal(closure *C.GClosure, retValue *C.GValue,
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "cannot save callback return value: %v", err)
 		}
-
-	case func(args []interface{}):
+	case func(p gi.ParamBox):
 		// 有参数，无返回值
-		fn(args)
-
-	case func(args []interface{}) interface{}:
+		fn(gi.ParamBox{Params: paramsIfc, UserData: cc.userData})
+	case func(p gi.ParamBox) interface{}:
 		// 有参数，有返回值
-		ret := fn(args)
+		ret := fn(gi.ParamBox{Params: paramsIfc, UserData: cc.userData})
 		gRetValue := Value{unsafe.Pointer(retValue)}
 		err := gRetValue.Set(ret)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "cannot save callback return value: %v", err)
 		}
+
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "invalid func type")
 	}
@@ -172,20 +172,33 @@ func gValueSlice(values *C.GValue, nValues int) (slice []C.GValue) {
 	return
 }
 
-// ClosureNew creates a new GClosure and adds its callback function
+func isValidClosureFn(fn interface{}) bool {
+	switch fn.(type) {
+	case func(),
+		func() interface{},
+		func(b gi.ParamBox),
+		func(b gi.ParamBox) interface{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// NewClosure creates a new GClosure and adds its callback function
 // to the internally-maintained map. It's exported for visibility to other
 // gotk3 packages and shouldn't be used in application code.
-func ClosureNew(f interface{}) Closure {
-	// Create a reflect.Value from f.  This is called when the
-	// returned GClosure runs.
-	rf := reflect.ValueOf(f)
+func NewClosure(fn interface{}, userData ...interface{}) Closure {
+	if !isValidClosureFn(fn) {
+		panic("fn is not a valid closure function")
+	}
 
 	// Create closure context which points to the reflected func.
-	cc := closureContext{rf: rf}
-
-	// Closures can only be created from funcs.
-	if rf.Type().Kind() != reflect.Func {
-		panic("f is not a func")
+	cc := closureContext{fn: fn}
+	if len(userData) > 0 {
+		if len(userData) > 1 {
+			panic("len(userData) > 1, len(userData) must be equal to 0 or 1")
+		}
+		cc.userData = userData[0]
 	}
 
 	//fType := rf.Type()
@@ -273,7 +286,7 @@ func sourceAttach(src *C.struct__GSource, fn SourceFunc) (SourceHandle, error) {
 	f := func() interface{} {
 		return fn()
 	}
-	closure := ClosureNew(f)
+	closure := NewClosure(f)
 
 	// Set closure to run as a callback when the idle source runs.
 	C.g_source_set_closure(src, closure.native())
@@ -324,10 +337,10 @@ func (v Value) Unset() {
 
 /* ---- Object ---- */
 
-func (v Object) connectClosure(after bool, detailedSignal string, f interface{}) SignalHandle {
+func (v Object) connectClosure(after bool, detailedSignal string, f interface{}, userData ...interface{}) SignalHandle {
 	cstr := C.CString(detailedSignal)
 
-	closure := ClosureNew(f)
+	closure := NewClosure(f, userData...)
 
 	c := C.g_signal_connect_closure(C.gpointer(v.P),
 		(*C.gchar)(cstr), closure.native(), C.gboolean(gi.Bool2Int(after)))

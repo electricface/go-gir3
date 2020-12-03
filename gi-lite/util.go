@@ -463,3 +463,16 @@ func storeStructFieldP(dest reflect.Value, ptr unsafe.Pointer) bool {
 	}
 	return false
 }
+
+type ParamBox struct {
+	Params   []interface{}
+	UserData interface{}
+}
+
+func (p ParamBox) Store(dest ...interface{}) error {
+	return Store(p.Params, dest...)
+}
+
+func (p ParamBox) StoreStruct(dest interface{}) error {
+	return StoreStruct(p.Params, dest)
+}
