@@ -100,12 +100,24 @@ func CallMyDestroyFn(ptr unsafe.Pointer) {
 
 type GType uint
 
-func Malloc(n int) unsafe.Pointer {
-	return unsafe.Pointer(C.g_malloc(C.gsize(n)))
+func Malloc(nBytes int) unsafe.Pointer {
+	return unsafe.Pointer(C.g_malloc(C.gsize(nBytes)))
 }
 
-func Malloc0(n int) unsafe.Pointer {
-	return unsafe.Pointer(C.g_malloc0(C.gsize(n)))
+func Malloc0(nBytes int) unsafe.Pointer {
+	return unsafe.Pointer(C.g_malloc0(C.gsize(nBytes)))
+}
+
+func SliceAlloc(blockSize int) unsafe.Pointer {
+	return unsafe.Pointer(C.g_slice_alloc(C.gsize(blockSize)))
+}
+
+func SliceAlloc0(blockSize int) unsafe.Pointer {
+	return unsafe.Pointer(C.g_slice_alloc0(C.gsize(blockSize)))
+}
+
+func SliceFree(blockSize int, memBlock unsafe.Pointer) {
+	C.g_slice_free1(C.gsize(blockSize), C.gpointer(memBlock))
 }
 
 func Free(p unsafe.Pointer) {
