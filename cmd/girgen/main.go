@@ -511,6 +511,106 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 		fi := si.Method(idxLv2)
 		pFunction(s, fi, idxLv1, idxLv2)
 	}
+	pStructPFunc(s, si)
+	numFields := si.NumField()
+	for i := 0; i < numFields; i++ {
+		field := si.Field(i)
+		pStructGetFunc(s, field, name)
+		//pStructSetFunc()
+		field.Unref()
+	}
+}
+
+func pStructPFunc(s *SourceFile, si *gi.StructInfo) {
+	ns := si.Namespace()
+	repo := gi.DefaultRepository()
+	cPrefix := repo.CPrefix(ns)
+	structName := si.Name()
+	cTypeName := cPrefix + structName
+	s.GoBody.Pn("func (v %v) p() %v {", structName, "*C."+cTypeName)
+	s.GoBody.Pn("return (*C.%v)(v.P)", cTypeName)
+	s.GoBody.Pn("}") // end func
+}
+
+func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string) {
+	var varReg VarReg
+
+	fieldName := fieldInfo.Name()
+	typeInfo := fieldInfo.Type()
+	defer typeInfo.Unref()
+	s.GoBody.Pn("// struct field " + fieldName)
+
+	parseResult := parseFieldType(typeInfo, fieldName)
+
+	getFnName := snake2Camel(fieldName)
+	varResult := varReg.alloc("result")
+	s.GoBody.Pn("func (v %v) %v() (%v %v) {", structName, getFnName, varResult, parseResult.goType)
+	s.GoBody.Pn("%v = %v", varResult, parseResult.expr)
+	s.GoBody.Pn("    return")
+	s.GoBody.Pn("}") // end func
+}
+
+type parseFieldTypeResult struct {
+	goType string
+	field  string
+	expr   string
+}
+
+func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
+	if fieldName == "type" {
+		fieldName = "_type"
+	} else if fieldName == "map" {
+		fieldName = "_type"
+	}
+
+	isPtr := ti.IsPointer()
+	tag := ti.Tag()
+	_ = tag
+	_ = isPtr
+	goType := "int /*TODO*/"
+	fieldExpr := "v.p()." + fieldName
+	expr := fmt.Sprintf("int(%v) /* TODO */", fieldExpr)
+
+	switch tag {
+	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
+		// 字符串类型
+		//goType = "string"
+
+	case gi.TYPE_TAG_BOOLEAN,
+		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
+		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
+		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
+		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
+		// 简单类型
+		goType = getTypeWithTag(tag)
+		expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+
+	case gi.TYPE_TAG_UNICHAR:
+		goType = "rune"
+		expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+
+	case gi.TYPE_TAG_INTERFACE:
+	// TODO
+
+	case gi.TYPE_TAG_GTYPE:
+		goType = "gi.GType"
+		expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+
+	case gi.TYPE_TAG_VOID:
+		if isPtr {
+			goType = "unsafe.Pointer"
+			expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+		}
+
+	case gi.TYPE_TAG_ARRAY:
+		// TODO
+	}
+
+	return &parseFieldTypeResult{
+		goType: goType,
+		expr:   expr,
+	}
 }
 
 // 给 XXXGetType 用的 id
