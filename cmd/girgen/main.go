@@ -228,6 +228,9 @@ func main() {
 	for _, cInclude := range cfg.CIncludes {
 		sourceFile.AddCInclude(cInclude)
 	}
+	for _, cPkg := range cfg.CPkgList {
+		sourceFile.AddCPkg(cPkg)
+	}
 
 	for _, pkg := range xRepo.Packages {
 		sourceFile.AddCPkg(pkg.Name)
@@ -541,17 +544,28 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 		pStructPFunc(s, si)
 		for i := 0; i < numFields; i++ {
 			field := si.Field(i)
+			fieldName := field.Name()
+
+			if strSliceContains(_cfg.DeniedFields, fmt.Sprintf("%v.%v", name, fieldName)) {
+				s.GoBody.Pn("// denied field %v.%v\n", name, fieldName)
+				continue
+			}
 
 			var xField *xmlp.Field
 			if xStructInfo != nil {
-				xField = xStructInfo.GetFieldByName(field.Name())
+				xField = xStructInfo.GetFieldByName(fieldName)
 			}
 
-			if field.Flags()&gi.FIELD_IS_READABLE == gi.FIELD_IS_READABLE {
+			flags := field.Flags()
+			if flags&gi.FIELD_IS_READABLE == gi.FIELD_IS_READABLE {
 				// is readable
 				pStructGetFunc(s, field, name, xField)
 			}
-			//pStructSetFunc()
+			if flags&gi.FIELD_IS_WRITABLE == gi.FIELD_IS_WRITABLE {
+				// is writable
+				//pStructSetFunc()
+			}
+
 			field.Unref()
 		}
 	}

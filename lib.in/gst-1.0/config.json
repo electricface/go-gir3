@@ -1,3 +1,5 @@
 {
-    "NoGetType": ["StaticCaps","StaticPadTemplate", "TypeFind"]
+    "DeniedFields": ["Iterator.copy", "Iterator.next", "Iterator.free",
+        "Iterator.resync", "TypeFind.peek", "TypeFind.suggest", "TypeFind.get_length"],
+    "NoGetType": ["StaticCaps", "StaticPadTemplate", "TypeFind"]
 }

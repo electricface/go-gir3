@@ -31,8 +31,10 @@ import (
 type config struct {
 	DeniedFuncs         []string // 不自动生成的函数列表
 	DeniedFieldsStructs []string // 不为结构体自动生成字段
+	DeniedFields        []string
 	CDefines            []string
 	CIncludes           []string
+	CPkgList            []string
 	NoGetType           []string // 不自动生成 GetType 方法的类型列表。
 	ManualCallbacks     []string // 用手写代码处理的 callback 名称列表
 }
