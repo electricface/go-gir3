@@ -71,6 +71,8 @@ var _optCfgFile string
 var _optPkg string
 var _optSyncGi bool
 
+var _xRepo *xmlp.Repository
+
 func init() {
 	log.SetFlags(log.Lshortfile)
 	flag.StringVar(&_optNamespace, "n", "", "namespace")
@@ -203,6 +205,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	_xRepo = xRepo
 
 	deps := getAllDeps(repo, _optNamespace)
 	log.Printf("deps: %#v\n", deps)
@@ -214,6 +217,10 @@ func main() {
 	yearStr := strconv.Itoa(time.Now().Year())
 	header := strings.Replace(fileHeader, "$year", yearStr, 1)
 	sourceFile.Header.WriteString(header)
+
+	for _, define := range cfg.CDefines {
+		sourceFile.AddCDefine(define)
+	}
 
 	for _, cInclude := range xRepo.CIncludes() {
 		sourceFile.AddCInclude("<" + cInclude.Name + ">")
@@ -468,11 +475,23 @@ func pEnum(s *SourceFile, ei *gi.EnumInfo, isEnum bool) {
 func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 	name := si.Name()
 
+	repo := gi.DefaultRepository()
 	numMethods := si.NumMethod()
 	if si.IsGTypeStruct() {
 		// 过滤掉对象的 Class 结构，比如 gtk.Window 的 WindowClass
 		if numMethods == 0 {
-			s.GoBody.Pn("// ignore GType struct %s\n", name)
+			s.GoBody.Pn("// ignore GType struct %v\n", name)
+			return
+		}
+	}
+
+	if strings.HasSuffix(name, "Private") && numMethods == 0 {
+		nameTrim := strings.TrimSuffix(name, "Private")
+		bi := repo.FindByName(_optNamespace, nameTrim)
+		if !bi.IsNil() {
+			s.GoBody.Pn("// ignore private struct %v, type of %v is %v\n",
+				name, nameTrim, bi.Type())
+			bi.Unref()
 			return
 		}
 	}
@@ -480,15 +499,20 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 	// 过滤掉 Class 结尾的，并且还存在去掉 Class 后缀后还存在的类型的结构。
 	// 目前它只过滤掉了 gobject 的 TypePluginClass 结构， 而 TypePlugin 是接口。
 	if strings.HasSuffix(name, "Class") && numMethods == 0 {
-		repo := gi.DefaultRepository()
-		nameRmClass := strings.TrimSuffix(name, "Class")
-		bi := repo.FindByName(_optNamespace, nameRmClass)
+		nameTrim := strings.TrimSuffix(name, "Class")
+		bi := repo.FindByName(_optNamespace, nameTrim)
 		if !bi.IsNil() {
-			s.GoBody.Pn("// ignore Class struct %s, type of %s is %s\n",
-				name, nameRmClass, bi.Type())
+			s.GoBody.Pn("// ignore class struct %v, type of %v is %v\n",
+				name, nameTrim, bi.Type())
 			bi.Unref()
 			return
 		}
+	}
+
+	typeDef, _ := _xRepo.GetType(name)
+	var xStructInfo *xmlp.StructInfo
+	if typeDef != nil {
+		xStructInfo = typeDef.(*xmlp.StructInfo)
 	}
 
 	if si.IsDeprecated() {
@@ -511,13 +535,25 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 		fi := si.Method(idxLv2)
 		pFunction(s, fi, idxLv1, idxLv2)
 	}
-	pStructPFunc(s, si)
+
 	numFields := si.NumField()
-	for i := 0; i < numFields; i++ {
-		field := si.Field(i)
-		pStructGetFunc(s, field, name)
-		//pStructSetFunc()
-		field.Unref()
+	if !strSliceContains(_cfg.DeniedFieldsStructs, name) && numFields > 0 {
+		pStructPFunc(s, si)
+		for i := 0; i < numFields; i++ {
+			field := si.Field(i)
+
+			var xField *xmlp.Field
+			if xStructInfo != nil {
+				xField = xStructInfo.GetFieldByName(field.Name())
+			}
+
+			if field.Flags()&gi.FIELD_IS_READABLE == gi.FIELD_IS_READABLE {
+				// is readable
+				pStructGetFunc(s, field, name, xField)
+			}
+			//pStructSetFunc()
+			field.Unref()
+		}
 	}
 }
 
@@ -527,25 +563,38 @@ func pStructPFunc(s *SourceFile, si *gi.StructInfo) {
 	cPrefix := repo.CPrefix(ns)
 	structName := si.Name()
 	cTypeName := cPrefix + structName
-	s.GoBody.Pn("func (v %v) p() %v {", structName, "*C."+cTypeName)
+	if cPrefix == "cairo" {
+		if structName == "Context" {
+			cTypeName = "cairo_t"
+		} else {
+			cTypeName = cPrefix + "_" + camel2Snake(structName) + "_t"
+		}
+	}
+	s.GoBody.Pn("\nfunc (v %v) p() %v {", structName, "*C."+cTypeName)
 	s.GoBody.Pn("return (*C.%v)(v.P)", cTypeName)
 	s.GoBody.Pn("}") // end func
 }
 
-func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string) {
-	var varReg VarReg
-
+func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string, xField *xmlp.Field) {
 	fieldName := fieldInfo.Name()
+	if xField != nil && xField.Bits > 0 {
+		s.GoBody.Pn("// TODO: ignore struct %v field %v, bits(=%v) > 0\n", structName, fieldName, xField.Bits)
+		return
+	}
+	var varReg VarReg
 	typeInfo := fieldInfo.Type()
 	defer typeInfo.Unref()
-	s.GoBody.Pn("// struct field " + fieldName)
 
 	parseResult := parseFieldType(typeInfo, fieldName)
-
 	getFnName := snake2Camel(fieldName)
+	if fieldName == "p" {
+		getFnName = "P0"
+	}
 	varResult := varReg.alloc("result")
 	s.GoBody.Pn("func (v %v) %v() (%v %v) {", structName, getFnName, varResult, parseResult.goType)
-	s.GoBody.Pn("%v = %v", varResult, parseResult.expr)
+	if !strings.Contains(parseResult.goType, "/*TODO*/") {
+		s.GoBody.Pn("%v = %v", varResult, parseResult.expr)
+	}
 	s.GoBody.Pn("    return")
 	s.GoBody.Pn("}") // end func
 }
@@ -557,10 +606,8 @@ type parseFieldTypeResult struct {
 }
 
 func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
-	if fieldName == "type" {
-		fieldName = "_type"
-	} else if fieldName == "map" {
-		fieldName = "_type"
+	if strSliceContains(_goKeywords, fieldName) {
+		fieldName = "_" + fieldName
 	}
 
 	isPtr := ti.IsPointer()
@@ -573,18 +620,25 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
-		// 字符串类型
-		//goType = "string"
+	// 字符串类型
+	//goType = "string"
 
-	case gi.TYPE_TAG_BOOLEAN,
-		gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
+	case gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
 		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
 		gi.TYPE_TAG_INT32, gi.TYPE_TAG_UINT32,
 		gi.TYPE_TAG_INT64, gi.TYPE_TAG_UINT64,
 		gi.TYPE_TAG_FLOAT, gi.TYPE_TAG_DOUBLE:
 		// 简单类型
-		goType = getTypeWithTag(tag)
-		expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+		if !isPtr {
+			goType = getTypeWithTag(tag)
+			expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+		}
+
+	case gi.TYPE_TAG_BOOLEAN:
+		if !isPtr {
+			goType = "bool"
+			expr = fmt.Sprintf("gi.Int2Bool(int(%v))", fieldExpr)
+		}
 
 	case gi.TYPE_TAG_UNICHAR:
 		goType = "rune"

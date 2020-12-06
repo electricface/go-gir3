@@ -29,10 +29,12 @@ import (
 )
 
 type config struct {
-	DeniedFuncs     []string `json:"deniedFuncs"` // 不自动生成的函数列表
-	CIncludes       []string `json:"cIncludes"`
-	NoGetType       []string `json:"noGetType"`       // 不自动生成 GetType 方法的类型列表。
-	ManualCallbacks []string `json:"manualCallbacks"` // 用手写代码处理的 callback 名称列表
+	DeniedFuncs         []string // 不自动生成的函数列表
+	DeniedFieldsStructs []string // 不为结构体自动生成字段
+	CDefines            []string
+	CIncludes           []string
+	NoGetType           []string // 不自动生成 GetType 方法的类型列表。
+	ManualCallbacks     []string // 用手写代码处理的 callback 名称列表
 }
 
 func loadConfig(filename string, cfg *config) error {

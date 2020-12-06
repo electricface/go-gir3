@@ -1,4 +1,5 @@
 {
-    "deniedFuncs": ["IdleAdd", "TimeoutAdd", "TimeoutAddSeconds"],
-    "manualCallbacks": ["DestroyNotify"]
+    "DeniedFuncs": ["IdleAdd", "TimeoutAdd", "TimeoutAddSeconds"],
+    "DeniedFieldsStructs": ["TestLogMsg"],
+    "ManualCallbacks": ["DestroyNotify"]
 }

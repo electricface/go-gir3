@@ -38,6 +38,7 @@ import (
 type SourceFile struct {
 	Pkg       string
 	CPkgList  []string
+	CDefines  []string
 	CIncludes []string
 	Header    *SourceBody
 	CHeader   *SourceBody
@@ -127,6 +128,13 @@ func (s *SourceFile) writeTo(w io.Writer) error {
 			}
 		}
 
+		for _, define := range s.CDefines {
+			_, err = io.WriteString(w, "#define "+define+"\n")
+			if err != nil {
+				return err
+			}
+		}
+
 		sort.Strings(s.CIncludes)
 		for _, inc := range s.CIncludes {
 			_, err = io.WriteString(w, "#include "+inc+"\n")
@@ -173,6 +181,10 @@ func (s *SourceFile) AddCPkg(cPkg string) {
 		}
 	}
 	s.CPkgList = append(s.CPkgList, cPkg)
+}
+
+func (s *SourceFile) AddCDefine(define string) {
+	s.CDefines = append(s.CDefines, define)
 }
 
 func (s *SourceFile) AddCInclude(inc string) {

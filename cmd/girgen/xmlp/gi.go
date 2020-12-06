@@ -505,6 +505,7 @@ type Field struct {
 	Readable bool          `xml:"readable,attr"`
 	Writable bool          `xml:"writable,attr"`
 	Private  bool          `xml:"private,attr"`
+	Bits     int           `xml:"bits,attr"`
 	Type     *Type         `xml:"type"`
 	Callback *CallbackInfo `xml:"callback"`
 }
@@ -534,6 +535,15 @@ type StructInfo struct {
 	Functions    []*FunctionInfo `xml:"function"`
 	Constructors []*FunctionInfo `xml:"constructor"`
 	Methods      []*FunctionInfo `xml:"method"`
+}
+
+func (si *StructInfo) GetFieldByName(name string) *Field {
+	for _, field := range si.Fields {
+		if field.Name == name {
+			return field
+		}
+	}
+	return nil
 }
 
 type UnionInfo struct {

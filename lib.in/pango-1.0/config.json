@@ -1,3 +1,5 @@
 {
-    "DeniedFuncs": ["Log2visGetEmbeddingLevels","AttrIterator.Destroy11"]
+    "DeniedFuncs": ["Log2visGetEmbeddingLevels","AttrIterator.Destroy11"],
+    "CDefines": ["PANGO_ENABLE_ENGINE", "PANGO_ENABLE_BACKEND"],
+    "CIncludes": ["<pango/pango-modules.h>"]
 }

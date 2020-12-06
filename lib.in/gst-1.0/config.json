@@ -1,3 +1,3 @@
 {
-    "noGetType": ["StaticCaps","StaticPadTemplate", "TypeFind"]
+    "NoGetType": ["StaticCaps","StaticPadTemplate", "TypeFind"]
 }

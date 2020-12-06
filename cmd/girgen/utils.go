@@ -110,20 +110,22 @@ func toCamelCase(name, sep string) string {
 	return out.String()
 }
 
-var _keywords = []string{
-	// Go 语言关键字:
-	"break", "default", "func", "interface", "select",
-	"case", "defer", "go", "map", "struct",
-	"chan", "else", "goto", "package", "switch",
-	"const", "fallthrough", "if", "range", "type",
-	"continue", "for", "import", "return", "var",
-
+var _keywords = append([]string{
 	// Go 语言内建函数:
 	"append", "cap", "close", "complex", "copy", "delete", "imag",
 	"len", "make", "new", "panic", "print", "println", "real", "recover",
 
 	// 全局变量
 	"_I",
+}, _goKeywords...)
+
+// Go 语言关键字
+var _goKeywords = []string{
+	"break", "default", "func", "interface", "select",
+	"case", "defer", "go", "map", "struct",
+	"chan", "else", "goto", "package", "switch",
+	"const", "fallthrough", "if", "range", "type",
+	"continue", "for", "import", "return", "var",
 }
 
 var _keywordsMap map[string]struct{}

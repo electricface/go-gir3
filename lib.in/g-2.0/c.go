@@ -423,17 +423,7 @@ func (v Object) GetProperties(names []string, dest ...interface{}) error {
 	return nil
 }
 
-/* ---- ObjectClass ---- */
-
-func (v ObjectClass) p() *C.GObjectClass {
-	return (*C.GObjectClass)(v.P)
-}
-
 /* ---- List ---- */
-
-func (v List) p() *C.GList {
-	return (*C.GList)(v.P)
-}
 
 func NewList() List {
 	ret := C.g_list_alloc()
@@ -469,19 +459,10 @@ func wrapList(p *C.GList) List {
 	return List{P: unsafe.Pointer(p)}
 }
 
-func (v List) Next() List {
-	native := v.p()
-	return wrapList(native.next)
-}
 
 func (v List) SetNext(next List) {
 	native := v.p()
 	native.next = next.p()
-}
-
-func (v List) Previous() List {
-	native := v.p()
-	return wrapList(native.prev)
 }
 
 func (v List) SetPrevious(prev List) {
@@ -513,11 +494,6 @@ func (v *List) Free1() {
 func (v List) RemoveLink(lLink List) List {
 	ret := C.g_list_remove_link(v.p(), lLink.p())
 	return wrapList(ret)
-}
-
-func (v List) Data() unsafe.Pointer {
-	native := v.p()
-	return unsafe.Pointer(native.data)
 }
 
 func (v List) SetData(data unsafe.Pointer) {
@@ -560,10 +536,6 @@ func (v List) InsertBefore(sibling List, data unsafe.Pointer) List {
 }
 
 /* ---- SList ---- */
-
-func (v SList) p() *C.GSList {
-	return (*C.GSList)(v.P)
-}
 
 // g_slist_alloc
 //
@@ -689,19 +661,9 @@ func (v SList) Last() SList {
 	return wrapSList(list)
 }
 
-func (v SList) Data() unsafe.Pointer {
-	native := v.p()
-	return unsafe.Pointer(native.data)
-}
-
 func (v SList) SetData(data unsafe.Pointer) {
 	native := v.p()
 	native.data = C.gpointer(data)
-}
-
-func (v SList) Next() SList {
-	native := v.p()
-	return wrapSList(native.next)
 }
 
 func (v SList) SetNext(next SList) {
