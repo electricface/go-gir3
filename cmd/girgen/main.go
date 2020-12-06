@@ -554,16 +554,20 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 			var xField *xmlp.Field
 			if xStructInfo != nil {
 				xField = xStructInfo.GetFieldByName(fieldName)
+				if xField != nil && xField.Bits > 0 {
+					s.GoBody.Pn("// TODO: ignore struct %v field %v, bits(=%v) > 0\n", name, fieldName, xField.Bits)
+					continue
+				}
 			}
 
 			flags := field.Flags()
 			if flags&gi.FIELD_IS_READABLE == gi.FIELD_IS_READABLE {
 				// is readable
-				pStructGetFunc(s, field, name, xField)
+				pStructGetFunc(s, field, name)
 			}
 			if flags&gi.FIELD_IS_WRITABLE == gi.FIELD_IS_WRITABLE {
 				// is writable
-				//pStructSetFunc()
+				pStructSetFunc(s, field, name)
 			}
 
 			field.Unref()
@@ -589,17 +593,13 @@ func pStructPFunc(s *SourceFile, si *gi.StructInfo) {
 	s.GoBody.Pn("}") // end func
 }
 
-func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string, xField *xmlp.Field) {
+func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string) {
 	fieldName := fieldInfo.Name()
-	if xField != nil && xField.Bits > 0 {
-		s.GoBody.Pn("// TODO: ignore struct %v field %v, bits(=%v) > 0\n", structName, fieldName, xField.Bits)
-		return
-	}
 	var varReg VarReg
 	typeInfo := fieldInfo.Type()
 	defer typeInfo.Unref()
 
-	parseResult := parseFieldType(typeInfo, fieldName)
+	parseResult := parseFieldType(typeInfo, fieldName, "")
 	getFnName := snake2Camel(fieldName)
 	if fieldName == "p" {
 		getFnName = "P0"
@@ -613,13 +613,32 @@ func pStructGetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string, x
 	s.GoBody.Pn("}") // end func
 }
 
-type parseFieldTypeResult struct {
-	goType string
-	field  string
-	expr   string
+func pStructSetFunc(s *SourceFile, fieldInfo *gi.FieldInfo, structName string) {
+	fieldName := fieldInfo.Name()
+	var varReg VarReg
+	typeInfo := fieldInfo.Type()
+	defer typeInfo.Unref()
+
+	varValue := varReg.alloc("value")
+	parseResult := parseFieldType(typeInfo, fieldName, varValue)
+	setFnName := "Set" + snake2Camel(fieldName)
+	s.GoBody.Pn("func (v %v) %v(%v %v) {", structName, setFnName, varValue, parseResult.goType)
+	if !strings.Contains(parseResult.goType, "/*TODO*/") {
+		for _, line := range parseResult.setLines {
+			s.GoBody.Pn("%v", line)
+		}
+	}
+	s.GoBody.Pn("}") // end func
 }
 
-func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
+type parseFieldTypeResult struct {
+	goType   string
+	field    string
+	expr     string
+	setLines []string
+}
+
+func parseFieldType(ti *gi.TypeInfo, fieldName string, varValue string) *parseFieldTypeResult {
 	if strSliceContains(_goKeywords, fieldName) {
 		fieldName = "_" + fieldName
 	}
@@ -631,6 +650,7 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
 	goType := "int /*TODO*/"
 	fieldExpr := "v.p()." + fieldName
 	expr := fmt.Sprintf("int(%v) /* TODO */", fieldExpr)
+	var setLines []string
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
@@ -646,6 +666,7 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
 		if !isPtr {
 			goType = getTypeWithTag(tag)
 			expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+			setLines = append(setLines, fmt.Sprintf("*(*%v)(unsafe.Pointer(&%v)) = %v", goType, fieldExpr, varValue))
 		}
 
 	case gi.TYPE_TAG_BOOLEAN:
@@ -676,8 +697,9 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string) *parseFieldTypeResult {
 	}
 
 	return &parseFieldTypeResult{
-		goType: goType,
-		expr:   expr,
+		goType:   goType,
+		expr:     expr,
+		setLines: setLines,
 	}
 }
 

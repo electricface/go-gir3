@@ -460,11 +460,6 @@ func wrapList(p *C.GList) List {
 }
 
 
-func (v List) SetNext(next List) {
-	native := v.p()
-	native.next = next.p()
-}
-
 func (v List) SetPrevious(prev List) {
 	native := v.p()
 	native.prev = prev.p()
@@ -494,11 +489,6 @@ func (v *List) Free1() {
 func (v List) RemoveLink(lLink List) List {
 	ret := C.g_list_remove_link(v.p(), lLink.p())
 	return wrapList(ret)
-}
-
-func (v List) SetData(data unsafe.Pointer) {
-	native := v.p()
-	native.data = C.gpointer(data)
 }
 
 func (v List) Length() int {
@@ -659,16 +649,6 @@ func (v SList) ForEachC(fn Func) {
 func (v SList) Last() SList {
 	list := C.g_slist_last(v.p())
 	return wrapSList(list)
-}
-
-func (v SList) SetData(data unsafe.Pointer) {
-	native := v.p()
-	native.data = C.gpointer(data)
-}
-
-func (v SList) SetNext(next SList) {
-	native := v.p()
-	native.next = next.p()
 }
 
 func (v SList) Nth(n uint) SList {
