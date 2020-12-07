@@ -21,7 +21,7 @@ go mainLoop.Run()
 | gshort /short           | 2    | 2    | int16                    |
 | gushort /unsigned short | 2    | 2    | uint16                   |
 | gint / gboolean / int   | 4    | 4    | int32                    |
-| guint / uint            | 4    | 4    | uint32                   |
+| guint / uint / gunichar | 4    | 4    | uint32                   |
 | glong / long            | 4    | 8    | int                      |
 | gulong / unsigned long  | 4    | 8    | uint                     |
 | gpointer / void*        | 4    | 8    | unsafe.Pointer / uintptr |

@@ -654,8 +654,14 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string, varValue string) *parseFi
 
 	switch tag {
 	case gi.TYPE_TAG_UTF8, gi.TYPE_TAG_FILENAME:
-	// 字符串类型
-	//goType = "string"
+		// 字符串类型
+		goType = "string"
+		expr = fmt.Sprintf("gi.GoString(unsafe.Pointer(%v))", fieldExpr)
+		setLines = append(setLines, fmt.Sprintf("if unsafe.Pointer(%v) != nil {", fieldExpr),
+			fmt.Sprintf("    gi.Free(unsafe.Pointer(%v))", fieldExpr),
+			"}", // end if
+			fmt.Sprintf("*(*unsafe.Pointer)(unsafe.Pointer(&%v)) = gi.CString(%v)", fieldExpr, varValue),
+		)
 
 	case gi.TYPE_TAG_INT8, gi.TYPE_TAG_UINT8,
 		gi.TYPE_TAG_INT16, gi.TYPE_TAG_UINT16,
@@ -673,11 +679,13 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string, varValue string) *parseFi
 		if !isPtr {
 			goType = "bool"
 			expr = fmt.Sprintf("gi.Int2Bool(int(%v))", fieldExpr)
+			setLines = append(setLines, fmt.Sprintf("*(*int32)(unsafe.Pointer(&%v)) = int32(gi.Bool2Int(%v))", fieldExpr, varValue))
 		}
 
 	case gi.TYPE_TAG_UNICHAR:
 		goType = "rune"
 		expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+		setLines = append(setLines, fmt.Sprintf("*(*%v)(unsafe.Pointer(&%v)) = %v", goType, fieldExpr, varValue))
 
 	case gi.TYPE_TAG_INTERFACE:
 	// TODO
@@ -690,6 +698,7 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string, varValue string) *parseFi
 		if isPtr {
 			goType = "unsafe.Pointer"
 			expr = fmt.Sprintf("%v(%v)", goType, fieldExpr)
+			setLines = append(setLines, fmt.Sprintf("*(*%v)(unsafe.Pointer(&%v)) = %v", goType, fieldExpr, varValue))
 		}
 
 	case gi.TYPE_TAG_ARRAY:
