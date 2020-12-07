@@ -1,0 +1,4 @@
+{
+    "CPkgList": ["gom-1.0"],
+    "CIncludes": ["<gom/gom.h>"]
+}
