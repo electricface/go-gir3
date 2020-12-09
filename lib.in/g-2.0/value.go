@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/linuxdeepin/go-gir/gi"
+	"github.com/electricface/go-gir/gi"
 )
 
 /*
