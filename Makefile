@@ -1,4 +1,4 @@
-export GIR_PKG_PATH := github.com/linuxdeepin/go-gir
+export GIR_PKG_PATH := github.com/electricface/go-gir
 GOPATH_DIR=gopath
 G_DIR=%GOPATH%/src/$(GIR_PKG_PATH)/g-2.0
 GOPKG_PREFIX = github.com/electricface/go-gir3
@@ -8,7 +8,7 @@ GOBUILD = go build $(GO_BUILD_FLAGS)
 # %GOPATH% 会在 girgen 中替换成 GOPATH 的第一个
 git_project_root=$(shell git rev-parse --show-toplevel)
 
-all: prepare girgen
+all: girgen
 
 prepare:
 	@mkdir -p out/bin
@@ -17,7 +17,7 @@ prepare:
          ln -sf ../../../.. ${GOPATH_DIR}/src/${GOPKG_PREFIX}; \
          fi
 
-girgen:
+girgen: prepare
 	env GOPATH="${CURDIR}/${GOPATH_DIR}:${GOPATH}" ${GOBUILD} -o $@ -v github.com/electricface/go-gir3/cmd/girgen
 
 gen_array_code:
