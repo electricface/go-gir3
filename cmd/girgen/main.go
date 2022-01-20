@@ -93,7 +93,7 @@ var _deps []string
 var _cfg *config
 var _sourceFile *SourceFile
 
-var _sigNamesMap = make(map[string]struct{})
+var _sigNamesMap = make(map[string]struct{}) // 键是所有信号名
 
 func main() {
 	flag.Parse()
@@ -241,7 +241,7 @@ func main() {
 	sourceFile.AddGoImport("log")
 
 	if _optNamespace == "Gio" || _optNamespace == "GObject" {
-		// 不再输出 var _ID
+		// 不再输出 var _I
 		sourceFile.GoBody.Pn("var _ gi.GType")
 	} else {
 		sourceFile.GoBody.Pn("var _I = gi.NewInvokerCache(%q)", _optNamespace)
@@ -575,6 +575,15 @@ func pStruct(s *SourceFile, si *gi.StructInfo, idxLv1 int) {
 	}
 }
 
+/*
+
+输出结构的C指针获取方法 p(), 比如 gio.ActionEntry 的 p 方法如下：
+
+func (v ActionEntry) p() *C.GActionEntry {
+	return (*C.GActionEntry)(v.P)
+}
+
+*/
 func pStructPFunc(s *SourceFile, si *gi.StructInfo) {
 	ns := si.Namespace()
 	repo := gi.DefaultRepository()
@@ -715,6 +724,14 @@ func parseFieldType(ti *gi.TypeInfo, fieldName string, varValue string) *parseFi
 // 给 XXXGetType 用的 id
 var _getTypeNextId int
 
+/*
+打印类型的 GType 类型获取方法，比如 gio.ActionEntry 的：
+
+func ActionEntryGetType() gi.GType {
+	ret := _I.GetGType1(194, "Gio", "ActionEntry")
+	return ret
+}
+*/
 func pGetTypeFunc(s *SourceFile, name, realName string) {
 	if realName == "" {
 		realName = name
